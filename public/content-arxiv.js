@@ -22,7 +22,7 @@
 
   const brand = document.createElement("span");
   brand.className = "rh-brand";
-  brand.textContent = "ResearchHub";
+  brand.textContent = "PDF-Reader";
   bar.appendChild(brand);
   const readBtn = mk("用笔记阅读器打开", "在扩展的阅读器里打开 PDF：高亮、划线、框选、批注", () => open());
   const talkBtn = mk("论文评论", "查看 / 参与这篇论文的讨论（和 ResearchHub 网站互通）", () => open("comments"));

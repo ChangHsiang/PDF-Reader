@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "ResearchHub PDF 笔记",
-  "short_name": "RH 笔记",
+  "name": "PDF-Reader",
+  "short_name": "PDF-Reader",
   "version": "0.1.0",
-  "description": "在 arXiv PDF 上高亮、划线、框选、写批注，查看和参与论文评论；可登录 ResearchHub 与网站同步。",
+  "description": "arXiv PDF 笔记阅读器：高亮、框选、画笔、批注，引用文献卡片，公式复制 LaTeX，划词翻译；可登录 ResearchHub 同步笔记。",
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "action": { "default_popup": "popup.html", "default_icon": { "16": "icons/16.png", "32": "icons/32.png" } },
   "background": { "service_worker": "background.js", "type": "module" },
