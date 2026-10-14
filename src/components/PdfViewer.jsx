@@ -44,6 +44,22 @@ function floatPos(r, vb, need) {
 
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3];
 
+/* 夜间模式的重影：pdf.js 用不透明画布（getContext("2d", { alpha: false })）画页面，浏览器在不透明画布上画字
+   用「彩色亚像素抗锯齿」—— 字的左右边带一圈橙 / 蓝的细边。白底上看不出来，夜间模式整页反相之后，
+   这圈彩边就成了字旁边的重影（踩过：用户说夜间的字看不清、有重影）。
+   开着 grayText 时把 alpha:false 改成 alpha:true：透明画布上浏览器只用灰度抗锯齿，字边没有颜色。
+   pdf.js 画之前自己会先铺一层白底，所以页面看上去和原来一样。只在夜间模式开（白底上彩色抗锯齿更清楚）；
+   切换后要让 pdf.js 重画一遍（画布是每次渲染新建的，见下面 settings.paper 的 effect） */
+let grayText = false;
+if (!HTMLCanvasElement.prototype.__rhPatched) {
+  const orig = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, opts) {
+    if (grayText && type === "2d" && opts?.alpha === false) opts = { ...opts, alpha: true };
+    return orig.call(this, type, opts);
+  };
+  HTMLCanvasElement.prototype.__rhPatched = true;
+}
+
 let libPromise = null;
 function loadPdfjs() {
   if (!libPromise) {
@@ -232,6 +248,14 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const transPosRef = useRef(transPos);
   transPosRef.current = transPos;
   const settings = useSettings();
+  // 夜间模式：页面改用灰度抗锯齿重画（原因见文件顶上 grayText 的注释）
+  useEffect(() => {
+    const want = settings.paper === "dark";
+    if (grayText === want) return;
+    grayText = want;
+    apiRef.current?.viewer?.refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.paper, doc]);
   // 公式旁的「复制 LaTeX」按钮（components/EqCopy.js）
   useEquationCopy(viewerElRef, apiRef, doc, paperKey.replace(/^arxiv:/, ""), settings.eqCopy);
   const autoTransRef = useRef(false);
