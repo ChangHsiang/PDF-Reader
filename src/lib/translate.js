@@ -1,12 +1,8 @@
-import { TRANSLATE_PROXY } from "./config";
 import { getSettings } from "./settings";
 
 /**
  * 划词翻译。服务按设置选（见 lib/settings）：
- * - site：先走网站的 DeepSeek 代理（只有构建时打开了 VITE_TRANSLATE_PROXY 才有这一项）（`/api/translate`，提示词要求保留 LaTeX、术语准确）；
- *   网站没配 key 时回 503 not_configured —— 记住，本次会话不再问，直接用 Google 翻译的公开接口。
- *   网站哪天配上 key，这里不用改就自动换过去
- * - google：只用 Google
+ * - google：Google 翻译的公开接口
  * - bing：必应翻译（网页版用的接口，见 viaBing）
  * - custom：用户自己填的 OpenAI 兼容接口（DeepSeek / OpenAI / 通义 / Kimi …）
  *
@@ -31,7 +27,6 @@ export const LANGS = [
 ];
 const langOf = (code) => LANGS.find(l => l.code === code) || LANGS[0];
 
-let siteOff = false;
 const cache = new Map();
 
 /** PDF 选区里行尾断字（"suffi- ciently"）接回去，多余空白压掉 */
@@ -45,21 +40,6 @@ const systemPrompt = (target) =>
   `Output ONLY the translation with no quotes or explanations. ` +
   `Preserve line breaks, LaTeX math ($...$ and $$...$$), URLs and citation markers like [12] exactly as-is. ` +
   `The text comes from an academic paper; keep technical terms accurate.`;
-
-async function viaSite(text, target) {
-  if (siteOff || !TRANSLATE_PROXY) return null;          // 构建时没打开代理（开源版默认）：直接用 Google
-  try {
-    const r = await fetch(TRANSLATE_PROXY, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      // 网站认 zh / en，别的语言直接给英文名（它原样放进提示词）
-      body: JSON.stringify({ text, target: target === "zh" || target === "en" ? target : langOf(target).name }),
-    });
-    if (r.status === 503) { siteOff = true; return null; }
-    if (!r.ok) return null;
-    const d = await r.json();
-    return d.translated ? { text: d.translated, engine: "DeepSeek" } : null;
-  } catch { return null; }
-}
 
 async function viaGoogle(text, target) {
   const tl = langOf(target).google;
@@ -156,7 +136,7 @@ export async function translate(raw) {
       if (engine === "custom") return viaCustom(text, target, s.customApi);
       if (engine === "google") return viaGoogle(text, target);
       if (engine === "bing") return viaBing(text, target);
-      return (await viaSite(text, target)) || viaGoogle(text, target);
+      return viaGoogle(text, target);
     })();
     job.catch(() => cache.delete(key));     // 失败别缓存，下次还能重试
     cache.set(key, job);

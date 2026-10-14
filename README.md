@@ -47,7 +47,6 @@ npm run build        # 产物在 dist/
 | 变量 | 作用 |
 | --- | --- |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | ResearchHub 的 Supabase 项目：登录同步笔记、论文评论 |
-| `VITE_TRANSLATE_PROXY` | 设成 `1` 时「默认」翻译先走 ResearchHub 网站的 DeepSeek 代理；不设就直接用 Google 翻译 |
 
 想要大模型翻译的话，不用改配置：在阅读器的设置里选「自定义 API」，填自己的接口地址和 key（只存在本机浏览器里）。
 

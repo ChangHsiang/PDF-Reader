@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSettings, setSettings, PAPERS } from "../lib/settings";
 import { viaCustom, LANGS } from "../lib/translate";
-import { TRANSLATE_PROXY } from "../lib/config";
 
 /**
  * 阅读器顶栏「设置」：阅读 + 翻译两组。
@@ -180,11 +179,9 @@ export default function SettingsDialog({ onClose }) {
           <div className="pb-2">
             <Row title="翻译服务">
               <Dropdown value={s.translateEngine} onChange={v => setSettings({ translateEngine: v })}
-                options={[...(TRANSLATE_PROXY ? [["site", "DeepSeek（ResearchHub）"]] : []),
-                  ["google", "Google 翻译"], ["bing", "必应翻译"], ["custom", "自定义 API"]]} />
+                options={[["google", "Google 翻译"], ["bing", "必应翻译"], ["custom", "自定义 API"]]} />
             </Row>
             <div className="text-[11.5px] text-[#9a9a9a] leading-snug -mt-1">
-              {s.translateEngine === "site" && "ResearchHub 网站的 DeepSeek 翻译，保留公式、术语更准。"}
               {s.translateEngine === "google" && "Google 翻译的公开接口，不用配置。"}
               {s.translateEngine === "bing" && "必应翻译的网页接口，不用配置。"}
               {s.translateEngine === "custom" && "兼容 OpenAI 接口格式的服务都可以：DeepSeek、OpenAI、通义千问、Kimi、本地部署的模型等。Key 只保存在这台电脑的浏览器里。"}

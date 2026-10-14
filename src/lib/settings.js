@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { TRANSLATE_PROXY } from "./config";
 
 /**
  * 插件设置，存 chrome.storage.local 的 `settings` 键（弹窗、阅读器、background 共用；
@@ -10,7 +9,7 @@ import { TRANSLATE_PROXY } from "./config";
  * - paper：页面颜色（护眼）white / green / sepia / gray / dark，见 PAPERS
  * - autoTranslate：选中文字后直接弹译文
  * - translateTarget：lib/translate 里 LANGS 的任一种语言代码
- * - translateEngine：google / bing / custom，构建时打开了网站代理的还有 site（网站的 DeepSeek，没开通就 Google）
+ * - translateEngine：google / bing / custom
  * - customApi：{ baseUrl, apiKey, model } —— 任何兼容 OpenAI chat/completions 的服务。
  *   Key 只存在本机这个浏览器里，不上传
  */
@@ -21,7 +20,7 @@ export const DEFAULT_SETTINGS = {
   paper: "white",
   autoTranslate: false,
   translateTarget: "zh",
-  translateEngine: TRANSLATE_PROXY ? "site" : "google",
+  translateEngine: "google",
   customApi: { baseUrl: "", apiKey: "", model: "" },
 };
 
@@ -39,9 +38,9 @@ export async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
   const s = { ...DEFAULT_SETTINGS, ...(settings || {}),
               customApi: { ...DEFAULT_SETTINGS.customApi, ...(settings?.customApi || {}) } };
-  // 以前有「自动」目标语言和「默认」翻译服务，存过的换成现在的默认值
+  // 以前有「自动」目标语言、「默认」/ 网站 DeepSeek 翻译服务，存过的换成现在的默认值
   if (s.translateTarget === "auto") s.translateTarget = DEFAULT_SETTINGS.translateTarget;
-  if (s.translateEngine === "auto" || (s.translateEngine === "site" && !TRANSLATE_PROXY)) s.translateEngine = DEFAULT_SETTINGS.translateEngine;
+  if (s.translateEngine === "auto" || s.translateEngine === "site") s.translateEngine = DEFAULT_SETTINGS.translateEngine;
   return s;
 }
 
