@@ -38,6 +38,20 @@ body { font-family: theme("fontFamily.sans"); }
 /* ↑ 别写成 span:has(> .rh-w)：:has() 让每次 DOM 变动都要把几千个 span 重新匹配一遍，
    pdf.js 滚动时不停地增删页面，实测滚动从中位 25ms 一帧掉到 144ms 一帧（踩过） */
 
+/* 页面颜色（护眼模式，设置里选，见 lib/settings 的 PAPERS）。
+   纸色：在画布上叠一层 multiply（正片叠底）—— 白 × 纸色 = 纸色，黑 × 纸色 = 黑，所以字还是原来的颜色，只有白底变了。
+   这一层是 .canvasWrapper 的 ::after：在画布之上、文字层 / 高亮层之下，不挡选字，高亮也画在它上面不变色。
+   伪元素不会被 pdf.js 重建页面时删掉（它只删不认识的子节点）。
+   夜间：画布反相（invert）再转半圈色相，深底浅字，图里的红蓝基本还是红蓝；反到 0.9 不到 1，底色是深灰不是纯黑，不刺眼 */
+.rh-paper-green { --rh-paper: #cce8cf; }
+.rh-paper-sepia { --rh-paper: #f4ecd8; }
+.rh-paper-gray  { --rh-paper: #e4e4e4; }
+:is(.rh-paper-green, .rh-paper-sepia, .rh-paper-gray) .page .canvasWrapper::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: var(--rh-paper); mix-blend-mode: multiply;
+}
+.rh-paper-dark .page .canvasWrapper { filter: invert(0.9) hue-rotate(180deg); }
+
 /* 每一页自成一个层叠上下文。pdf.js 给每个链接注解一个递增的 z-index（链接多的页能到上百），
    不隔离的话它们会跟页面外的浮层（文献卡片、编辑条、气泡，z-index 45 左右）比大小 ——
    结果卡片画在上面、鼠标却点到底下的链接，悬停时 pdf.js 那层黄色还透到卡片上（踩过） */

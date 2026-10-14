@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
  *
  * - intercept：打开 arXiv PDF 时换成插件阅读器
  * - eqCopy：公式编号旁显示「复制 LaTeX」按钮
+ * - paper：页面颜色（护眼）white / green / sepia / gray / dark，见 PAPERS
  * - autoTranslate：选中文字后直接弹译文
  * - translateTarget：auto（外文→中文、中文→英文）/ lib/translate 里 LANGS 的任一种语言代码
  * - translateEngine：auto（网站 DeepSeek 代理，没开通就 Google）/ google / bing / custom
@@ -16,11 +17,22 @@ import { useEffect, useState } from "react";
 export const DEFAULT_SETTINGS = {
   intercept: true,
   eqCopy: true,
+  paper: "white",
   autoTranslate: false,
   translateTarget: "auto",
   translateEngine: "auto",
   customApi: { baseUrl: "", apiKey: "", model: "" },
 };
+
+/** 页面颜色（护眼模式）。前四种是在画布上叠一层「正片叠底」的纸色：白底变成这个颜色，黑字还是黑的；
+    夜间是把画布反相再转回色相（深底浅字，图的颜色基本保持）。具体画法见 index.css 的 .rh-paper-* */
+export const PAPERS = [
+  { key: "white", label: "白色", swatch: "#ffffff" },
+  { key: "green", label: "豆沙绿", swatch: "#cce8cf" },
+  { key: "sepia", label: "米黄", swatch: "#f4ecd8" },
+  { key: "gray", label: "浅灰", swatch: "#e4e4e4" },
+  { key: "dark", label: "夜间", swatch: "#2b2b2b" },
+];
 
 export async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");

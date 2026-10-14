@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useSettings, setSettings } from "../lib/settings";
+import { useSettings, setSettings, PAPERS } from "../lib/settings";
 import { viaCustom, LANGS } from "../lib/translate";
 import { TRANSLATE_PROXY } from "../lib/config";
 
@@ -148,6 +148,23 @@ export default function SettingsDialog({ onClose }) {
           <Row title="打开 arXiv PDF 时用笔记阅读器" desc="关掉后 arXiv 的 PDF 用浏览器自带的阅读器打开">
             <Switch on={s.intercept} onClick={() => setSettings({ intercept: !s.intercept })} />
           </Row>
+          <div className="py-2.5">
+            <div className="text-[13px] text-[#f2f2f2]">页面颜色</div>
+            <div className="text-[11.5px] text-[#9a9a9a] leading-snug mt-0.5 mb-2">护眼：把 PDF 的白底换成别的颜色，文字和标注不受影响。夜间模式下图片的颜色会反过来</div>
+            <div className="flex gap-2">
+              {PAPERS.map(p => (
+                <button key={p.key} onClick={() => setSettings({ paper: p.key })} title={p.label}
+                  className="flex flex-col items-center gap-1 bg-transparent border-none cursor-pointer p-0 group">
+                  <span className="w-9 h-9 rounded-md flex items-center justify-center text-[13px] font-serif"
+                    style={{ background: p.swatch, color: p.key === "dark" ? "#d8d8d8" : "#222",
+                             boxShadow: (s.paper || "white") === p.key ? "0 0 0 2px #323639, 0 0 0 4px #7ec8e3" : "inset 0 0 0 1px #ffffff33" }}>
+                    Aa
+                  </span>
+                  <span className={`text-[11px] ${(s.paper || "white") === p.key ? "text-[#fff]" : "text-[#9a9a9a] group-hover:text-[#d0d0d0]"}`}>{p.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <Row title="公式旁显示「复制 LaTeX」按钮" desc="带编号的公式左边一颗小按钮，复制的是 arXiv 源码里的 LaTeX（作者自定义的宏已展开）">
             <Switch on={s.eqCopy} onClick={() => setSettings({ eqCopy: !s.eqCopy })} />
           </Row>

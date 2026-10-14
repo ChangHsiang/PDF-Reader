@@ -1583,7 +1583,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
             </div>
           )}
           <div ref={containerRef}
-            className={`absolute inset-0 overflow-auto overscroll-contain thin-scrollbar ${tool === "area" ? "rh-area-mode" : tool === "pen" ? "rh-area-mode rh-pen-mode" : tool === "eraser" ? "rh-area-mode rh-eraser-mode" : tool === "textbox" ? "rh-area-mode rh-textbox-mode" : tool === "note" ? "rh-area-mode rh-note-mode" : ""}`}>
+            className={`absolute inset-0 overflow-auto overscroll-contain thin-scrollbar rh-paper-${settings.paper || "white"} ${tool === "area" ? "rh-area-mode" : tool === "pen" ? "rh-area-mode rh-pen-mode" : tool === "eraser" ? "rh-area-mode rh-eraser-mode" : tool === "textbox" ? "rh-area-mode rh-textbox-mode" : tool === "note" ? "rh-area-mode rh-note-mode" : ""}`}>
             {/* pdf.js 往这个元素里插 / 删 .page，React 的东西不和它混在一起 */}
             <div ref={viewerElRef} className="pdfViewer relative" />
             {/* 浮层另起一层，和 .pdfViewer 左上角重合、一起滚；坐标照旧按 .pdfViewer 的盒子算。
