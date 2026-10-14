@@ -11,6 +11,8 @@
     "watch": "vite build --watch --mode development"
   },
   "dependencies": {
+    "@embedpdf/engines": "^2.15.1",
+    "@embedpdf/pdfium": "^2.15.1",
     "katex": "^0.16.38",
     "pdfjs-dist": "6.2.108",
     "react": "^19.2.0",
