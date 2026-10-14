@@ -24,10 +24,12 @@ body { font-family: theme("fontFamily.sans"); }
 .pdfViewer .annotationLayer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
 /* 文字层（lib/pdfium/textLayer.js）：每个词一个 span，放在 PDF 里这个词的真实外框上；字透明，只用来选 */
 .pdfViewer .textLayer { position: absolute; left: 0; top: 0; overflow: clip; z-index: 0; text-align: initial; forced-color-adjust: none;
-  transform-origin: 0 0; transform: scale(calc(var(--scale-factor) / 1.3333333)); }
+  transform-origin: 0 0; transform: scale(calc(var(--scale-factor) / 1.3333333)); opacity: 0.25; }
 .pdfViewer .textLayer span, .pdfViewer .textLayer br { position: absolute; white-space: pre; color: transparent; cursor: text; transform-origin: 0 0; }
 .pdfViewer .textLayer span { font-family: Arial, sans-serif; line-height: inherit; }
-.pdfViewer .textLayer ::selection { background: rgba(0, 100, 255, 0.25); }
+/* 选中色不透明、整层 0.25 透明（同 pdf.js）：相邻的词框 / 空格框边上会叠一点，
+   选中色本身半透明的话叠的地方深一块，一行选下来深浅一段一段的（踩过） */
+.pdfViewer .textLayer ::selection { background: rgb(0, 100, 255); }
 .pdfViewer .textLayer br::selection { background: transparent; }
 /* 搜索命中（lib/pdfium/find.js）：所有命中淡黄，当前这一处深一点 */
 .pdfViewer .rh-find { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
@@ -35,6 +37,8 @@ body { font-family: theme("fontFamily.sans"); }
 .pdfViewer .rh-find .highlight.selected { background: rgba(255, 120, 0, 0.5); }
 .pdfViewer .annotationLayer .linkAnnotation { position: absolute; }
 .pdfViewer .annotationLayer .linkAnnotation > a { position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
+/* 指上链接时的淡黄框（同 pdf.js） */
+.pdfViewer .annotationLayer .linkAnnotation > a:hover { opacity: 0.2; background: #ff0; box-shadow: 0 2px 10px #ff0; }
 
 /* 页面颜色（护眼模式，设置里选，见 lib/settings 的 PAPERS）。
    纸色：在画布上叠一层 multiply（正片叠底）—— 白 × 纸色 = 纸色，黑 × 纸色 = 黑，所以字还是原来的颜色，只有白底变了。

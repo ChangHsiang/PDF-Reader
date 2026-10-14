@@ -342,7 +342,7 @@ export class PdfiumViewer {
   }
 
   /** 链接层：结构照 pdf.js（section.linkAnnotation > a），点内部链接跳转、外部链接新标签页打开。
-      不画悬停黄框（PDF 里的链接矩形本来就不贴字，画出来像是偏了；Edge 也不画） */
+      指上去的淡黄框在 index.css（同 pdf.js） */
   async _renderLinks(v) {
     v.links = "loading";
     let links = [];

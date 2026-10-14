@@ -1436,9 +1436,8 @@ export function TextBoxEditor({ draft, viewerEl, onChange, onDone, onDelete }) {
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l3.5-9L12 13M6.3 10h4.4" /><path d="M13 4l3 9 3-9" /><path d="M3 19h6M9 19l-2.5-2M9 19l-2.5 2M21 19h-6M15 19l2.5-2M15 19l2.5 2" /></svg>
         </button>
         {sep}
-        <button className={tb} onClick={onDelete} title="删除这个文本框">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-        </button>
+        {/* 和别处的删除一样要点两下（DeleteButton） */}
+        <DeleteButton onConfirm={onDelete} title="删除这个文本框" size={32} icon={16} />
       </div>
 
       {/* 框本身：左边拖动把手、右边拉宽度的圆钮 */}
