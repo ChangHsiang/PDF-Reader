@@ -1,5 +1,5 @@
 {
-  "name": "researchhub-pdf-notes",
+  "name": "pdf-reader",
   "private": true,
   "version": "0.1.0",
   "description": "arXiv PDF 笔记阅读器：标注、文献卡片、划词翻译（Chrome / Edge 扩展）",
