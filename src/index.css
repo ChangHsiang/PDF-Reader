@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { margin: 0; }
+body { font-family: theme("fontFamily.sans"); }
+
+/* pdf.js 给 `.pdfViewer .page` 加了 9px 透明边框，宽高按 content-box 写；
+   Tailwind preflight 的 `*{box-sizing:border-box}` 会把这 9px 从宽高里扣掉，
+   画布被压窄、文字层 / 注解层却按原网格定位 → 越往右下偏得越多。拨回 content-box。
+   （网站 docs/dev/papers.md「PDF 自渲染」那段有完整的实测数据） */
+.pdfViewer .page { box-sizing: content-box; }
+
+/* 文字层按词拆出来的小块（lib/preciseText.js）。pdf.js 给文字层里所有 span 都写了 position:absolute，
+   在 markedContent 里的还会被设成 font-size:0、再叠一层整行的拉伸 —— 小块要排成一行、字号跟着这一行走，
+   宽度由小块自己的字间距（letter-spacing）调 */
+.textLayer span.rh-w {
+  position: static !important;
+  display: inline;                 /* 普通行内文字：宽度靠字间距调，不用 inline-block + transform（太费绘制） */
+  font-size: inherit !important;
+  font-family: rh-tight, sans-serif !important;
+  vertical-align: var(--rh-dy, 0);   /* 框上下居中在字身上（preciseText 按画布量出来写在整行上） */
+}
+/* 选中时的高亮框高度 = 字体的上伸 + 下伸。系统 sans-serif 大约是 1.15 个字号，比画出来的字高一截，
+   框上下都冒出来（标题行实测字形 14px 高、高亮 23px）。同一个字体把上伸 / 下伸压到正好 1 个字号，
+   高亮框就和 pdf.js 给这一行的框一样高，贴着字。字宽不变（横向对齐靠字间距，见 preciseText） */
+@font-face {
+  font-family: rh-tight;
+  src: local("Arial"), local("Helvetica"), local("Liberation Sans"), local("DejaVu Sans");
+  ascent-override: 80%;
+  descent-override: 20%;
+  line-gap-override: 0%;
+}
+/* 拆过的那一行，整行的横向拉伸固定成 1（每个小块自己拉伸）。
+   缩放时 pdf.js 会重新量整行的宽度、把 --scale-x 写回行内样式 —— 不压住的话整行又被拉伸一遍，
+   一缩放就全错开（实测 150% 时偏差最大 51px）。!important 的样式表规则压得住没加 !important 的行内样式 */
+.textLayer span.rh-split { --scale-x: 1 !important; }
+/* ↑ 别写成 span:has(> .rh-w)：:has() 让每次 DOM 变动都要把几千个 span 重新匹配一遍，
+   pdf.js 滚动时不停地增删页面，实测滚动从中位 25ms 一帧掉到 144ms 一帧（踩过） */
+
+/* 每一页自成一个层叠上下文。pdf.js 给每个链接注解一个递增的 z-index（链接多的页能到上百），
+   不隔离的话它们会跟页面外的浮层（文献卡片、编辑条、气泡，z-index 45 左右）比大小 ——
+   结果卡片画在上面、鼠标却点到底下的链接，悬停时 pdf.js 那层黄色还透到卡片上（踩过） */
+.pdfViewer .page { isolation: isolate; }
+
+/* 区域框选模式：十字光标；文字层不让选（否则拖框时同时在划选文字） */
+.rh-area-mode .page { cursor: crosshair; touch-action: none; user-select: none; -webkit-user-select: none; }
+.rh-area-mode .page .textLayer { pointer-events: none; }
+
+/* 画笔 / 橡皮擦（和框选共用 rh-area-mode：不能选字、手指拖动是画而不是滚动），只换光标。
+   热点放在笔尖（左下角）/ 圆心 */
+.rh-pen-mode .page {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24' fill='white' stroke='%23222' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 3l4 4L8 20l-5 1 1-5z'/%3E%3C/svg%3E") 2 21, crosshair;
+}
+.rh-textbox-mode .page { cursor: text; }
+.rh-note-mode .page { cursor: crosshair; }
+
+/* 附注图标指上去浮出的内容卡（PdfNotes 的 noteIconEl）。纯 CSS 显隐，不挂事件 */
+.rh-note-tip {
+  display: none; position: absolute; left: calc(100% + 8px); top: 0; z-index: 5;
+  width: max-content; max-width: 240px; padding: 8px 12px; border-radius: 4px;
+  background: #fffbea; border: 1px solid #d8cfa8; box-shadow: 2px 3px 8px rgba(0,0,0,.28);
+  color: #222; font: 12.5px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  pointer-events: none; cursor: default; text-align: left;
+}
+.rh-note:hover .rh-note-tip { display: block; }
+.rh-note-tip b { display: block; font-size: 12px; margin-bottom: 2px; }
+.rh-note-tip-body { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
+.rh-note-tip-more { margin-top: 3px; font-size: 11px; color: #8a7f55; }
+.rh-eraser-mode .page {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18'%3E%3Ccircle cx='9' cy='9' r='8' fill='rgba(255,255,255,0.55)' stroke='%23333' stroke-width='1.2'/%3E%3C/svg%3E") 9 9, cell;
+}
+
+.thin-scrollbar { scrollbar-width: thin; scrollbar-color: #ffffff40 transparent; }
+
+.line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.line-clamp-4 { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* 公式旁的「复制 LaTeX」按钮（components/EqCopy.js）。平时淡一点，不抢正文；指上去才显眼 */
+.rh-eq-btn {
+  position: absolute; transform: translateY(-50%);
+  width: 16px; height: 16px; padding: 0; border-radius: 4px;   /* 放在编号右边，左栏只有约 24px 的栏间空白 */
+  display: flex; align-items: center; justify-content: center;
+  color: #1b4f72; background: rgba(27, 79, 114, 0.07); border: 1px solid rgba(27, 79, 114, 0.3);
+  opacity: 0.45; cursor: pointer; pointer-events: auto; transition: opacity .12s, background .12s;
+}
+.rh-eq-btn:hover { opacity: 1; background: rgba(27, 79, 114, 0.16); }

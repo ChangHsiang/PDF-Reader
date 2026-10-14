@@ -1,0 +1,12 @@
+#rh-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 8px 0 12px; padding: 6px 10px;
+  border: 1px solid #d6dfe6; border-radius: 8px; background: #f3f7fa;
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+#rh-bar .rh-brand { font-weight: 700; color: #1b4f72; margin-right: 4px; }
+#rh-bar button {
+  font: inherit; cursor: pointer; padding: 3px 12px; border-radius: 999px;
+  border: 1px solid #1b4f72; background: #fff; color: #1b4f72;
+}
+#rh-bar button:hover { background: #1b4f72; color: #fff; }

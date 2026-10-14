@@ -1,0 +1,26 @@
+{
+  "name": "researchhub-pdf-notes",
+  "private": true,
+  "version": "0.1.0",
+  "description": "arXiv PDF 笔记阅读器：标注、文献卡片、划词翻译（Chrome / Edge 扩展）",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "icons": "node scripts/make-icons.mjs",
+    "build": "node scripts/make-icons.mjs && vite build",
+    "watch": "vite build --watch --mode development"
+  },
+  "dependencies": {
+    "katex": "^0.16.38",
+    "pdfjs-dist": "6.2.108",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.19",
+    "vite": "^7.3.1"
+  }
+}
