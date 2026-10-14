@@ -353,10 +353,10 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
 
   const visibleAnns = useMemo(() => {
     const list = [];
-    /* 附注图标、框选框指上去的浮卡要显示作者名：只给这两种挂一个 _author（别的类型不用，省得整份复制） */
+    /* 指上去的浮卡（附注、框选、高亮、下划线）要显示作者名：给这些挂一个 _author（手写、文本框没有浮卡，不用复制） */
     const myName = me?.name || "我";
-    if (scope !== "others") list.push(...mineView.map(a => (a.kind === "note" || a.kind === "area" ? { ...a, _author: myName } : a)));
-    if (scope !== "mine") othersView.forEach(o => list.push(...o.annotations.map(a => (a.kind === "note" || a.kind === "area"
+    if (scope !== "others") list.push(...mineView.map(a => (a.rects?.length && a.kind !== "ink" && a.kind !== "text" ? { ...a, _author: myName } : a)));
+    if (scope !== "mine") othersView.forEach(o => list.push(...o.annotations.map(a => (a.rects?.length && a.kind !== "ink" && a.kind !== "text"
       ? { ...a, _author: o.author?.name || o.author?.username || "" } : a))));
     return list;
   // eslint-disable-next-line react-hooks/exhaustive-deps

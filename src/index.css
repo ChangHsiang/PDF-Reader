@@ -65,6 +65,7 @@ body { font-family: theme("fontFamily.sans"); }
 }
 .rh-has-tip:hover > .rh-note-tip { display: block; }
 .rh-note-tip.rh-tip-left { left: auto; right: calc(100% + 8px); }
+.rh-note-tip.rh-tip-below { left: 0; top: calc(100% + 6px); }
 .rh-note-tip b { display: block; font-size: 12px; margin-bottom: 2px; }
 .rh-note-tip-body { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
 .rh-note-tip-more { margin-top: 3px; font-size: 11px; color: #8a7f55; }

@@ -128,13 +128,13 @@ export function noteIconEl(a, on) {
 /**
  * 指上去浮出的浅黄内容卡：作者 + 批注 (+ 回复条数)。附注图标和框选框共用（框选原来用浏览器自带的 title，
  * 灰底小字、要停一秒才出来，和附注不是一个样子）。没内容就不出（返回 null）。
- * side = "left" 时贴在宿主左边外侧（宿主太靠页面右边时用）
+ * side：right（默认，贴在宿主右边外侧）/ left（宿主太靠页面右边时）/ below（高亮、下划线：贴在这一行下面）
  */
 function hoverTip(a, side = "right") {
   const replies = a.style?.replies || [];
   if (!a.body && !replies.length) return null;
   const t = document.createElement("div");
-  t.className = "rh-note-tip" + (side === "left" ? " rh-tip-left" : "");
+  t.className = "rh-note-tip" + (side === "left" ? " rh-tip-left" : side === "below" ? " rh-tip-below" : "");
   t.innerHTML = (a._author ? `<b>${escHtml(a._author)}</b>` : "") +
     (a.body ? `<div class="rh-note-tip-body">${escHtml(a.body)}</div>` : "") +
     (replies.length ? `<div class="rh-note-tip-more">${replies.length} 条回复</div>` : "");
@@ -216,7 +216,7 @@ export function useHighlightLayer(viewerElRef, apiRef, ready, annotations, { act
       /* **幂等**：这一页要画的东西和上次一模一样就直接返回，一个节点都不动。
          除了省事，更要紧的是它能让「画一次 → 触发事件 → 又来画一次」这种
          回环**自己收敛**（第二次不产生任何 DOM 变化，也就不会有第三次）。 */
-      const sig = list.map(a => `${a.id}/${a.kind}/${a.color}/${a.style?.dash}/${a.style?.width}/${a.style?.fill ? 1 : 0}/${a.style?.size}/${a.style?.spacing}/${a.kind === "text" || a.kind === "note" || a.kind === "area" ? `${a.body}|${a.rects?.[0]?.x},${a.rects?.[0]?.y},${a.rects?.[0]?.w}|${a._author || ""}|${a.style?.replies?.length || 0}` : ""}/${a.id === hiddenId ? 1 : 0}/${a.id === activeId ? 1 : 0}`).join("|");
+      const sig = list.map(a => `${a.id}/${a.kind}/${a.color}/${a.style?.dash}/${a.style?.width}/${a.style?.fill ? 1 : 0}/${a.style?.size}/${a.style?.spacing}/${a.kind === "text" || a.kind === "note" || a.kind === "area" ? `${a.rects?.[0]?.x},${a.rects?.[0]?.y},${a.rects?.[0]?.w}` : ""}|${a.body || ""}|${a._author || ""}|${a.style?.replies?.length || 0}/${a.id === hiddenId ? 1 : 0}/${a.id === activeId ? 1 : 0}`).join("|");
       if (layer) {
         if (layer.dataset.sig === sig) return;
       } else {
@@ -324,7 +324,12 @@ export function useHighlightLayer(viewerElRef, apiRef, ready, annotations, { act
               `border-radius:3px;pointer-events:auto;cursor:pointer;` +
               (on ? `outline:2px solid ${rgba(a.color, 0.9)};` : "");
           d.dataset.annId = String(a.id);
-          d.title = a.body || a.quote || "";
+          /* 批注：指上去浮出和附注 / 框选一样的浅黄卡片（原来是浏览器自带的 title）。跨几行的高亮每一行都挂一张，
+             出现在鼠标所在那一行的**下方**（放右边会盖住同一行后面的字）。没写批注的不出卡片，也不再拿原文当提示 */
+          if (!on) {
+            const t = hoverTip(a, "below");
+            if (t) { d.classList.add("rh-has-tip"); d.appendChild(t); }
+          }
           kids.push(d);
         });
       });
@@ -1142,12 +1147,27 @@ export function AnnMenu({ pos, a, mine, copied, author, onColor, onStyle, onEdit
             onDash={isArea ? (d => onStyle({ dash: d })) : null}
             onWidth={isArea ? (w => onStyle({ width: w })) : null} />
           <div className="self-stretch border-l border-[#ffffff26]" />
-          <div className="flex flex-col gap-0.5">
-            <button onClick={onEdit} className={btn}>批注</button>
+          {/* 批注 / 删除：图标按钮（和笔记列表里的同一套：铅笔、垃圾桶），文字放进 title。
+              原来是「批注」「删除」两行字，挤在颜色块旁边像两条菜单项。删除仍要点两下：第二下才是红色的「确认删除」 */}
+          <div className="flex flex-col gap-1 items-center">
+            <button onClick={onEdit} title={a.body ? "编辑批注和标签" : "写批注 / 加标签"} aria-label="批注"
+              className="w-8 h-8 rounded-md flex items-center justify-center bg-transparent border-none cursor-pointer
+                         text-[#d0d0d0] hover:text-[#fff] hover:bg-[#ffffff26]">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+            </button>
             {confirm ? (
-              <button onClick={onDelete} className={`${btn} text-[#fff] bg-[#c0392b] hover:bg-[#a93226]`}>确认删除</button>
+              <button onClick={onDelete} title="再点一下删除这条标注"
+                className="h-8 px-2 rounded-md text-[11.5px] font-sans whitespace-nowrap border-none cursor-pointer text-[#fff] bg-[#c0392b] hover:bg-[#a93226]">
+                确认删除
+              </button>
             ) : (
-              <button onClick={() => setConfirm(true)} className={`${btn} text-[#ff9a9a]`}>删除</button>
+              <button onClick={() => setConfirm(true)} title="删除这条标注" aria-label="删除"
+                className="w-8 h-8 rounded-md flex items-center justify-center bg-transparent border-none cursor-pointer
+                           text-[#d0d0d0] hover:text-[#ff8a8a] hover:bg-[#ff8a8a1f]">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"
+                  strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" /><path d="M10 11v5M14 11v5" /></svg>
+              </button>
             )}
           </div>
         </div>
@@ -1446,6 +1466,7 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
   const bodyRef = useRef(null);
   const replyRef = useRef(null);
   const [reply, setReply] = useState("");
+  const [confirmDel, setConfirmDel] = useState(false);     // 删除要点两下（同标注编辑条）：第一下变成红色「确认删除」
   const pageEl = viewerEl?.querySelector(`.page[data-page-number="${draft.page}"]`);
   const mine = draft.mine;
   const replies = draft.replies || [];
@@ -1500,12 +1521,17 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
           <span className="text-[13px] font-bold truncate">{draft.author || "我"}</span>
           <span className="text-[11.5px] text-[#888] shrink-0">{fmtTime(draft.at)}</span>
           <span className="flex-1" />
-          {mine && draft.id && (
-            <button onClick={onDelete} title="删除这条附注" className={ib}>
+          {mine && draft.id && (confirmDel ? (
+            <button onClick={onDelete} title="再点一下删除这条附注（连同回复）"
+              className="h-6 px-2 rounded text-[11.5px] font-sans whitespace-nowrap border-none cursor-pointer text-[#fff] bg-[#c0392b] hover:bg-[#a93226]">
+              确认删除
+            </button>
+          ) : (
+            <button onClick={() => setConfirmDel(true)} title="删除这条附注" aria-label="删除" className={`${ib} hover:text-[#c0392b]`}>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
             </button>
-          )}
+          ))}
           <button onClick={onDone} title="关闭（Esc）" className={ib}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
