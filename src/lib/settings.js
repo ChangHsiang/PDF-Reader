@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TRANSLATE_PROXY } from "./config";
 
 /**
  * 插件设置，存 chrome.storage.local 的 `settings` 键（弹窗、阅读器、background 共用；
@@ -8,8 +9,8 @@ import { useEffect, useState } from "react";
  * - eqCopy：公式编号旁显示「复制 LaTeX」按钮
  * - paper：页面颜色（护眼）white / green / sepia / gray / dark，见 PAPERS
  * - autoTranslate：选中文字后直接弹译文
- * - translateTarget：auto（外文→中文、中文→英文）/ lib/translate 里 LANGS 的任一种语言代码
- * - translateEngine：auto（网站 DeepSeek 代理，没开通就 Google）/ google / bing / custom
+ * - translateTarget：lib/translate 里 LANGS 的任一种语言代码
+ * - translateEngine：google / bing / custom，构建时打开了网站代理的还有 site（网站的 DeepSeek，没开通就 Google）
  * - customApi：{ baseUrl, apiKey, model } —— 任何兼容 OpenAI chat/completions 的服务。
  *   Key 只存在本机这个浏览器里，不上传
  */
@@ -19,8 +20,8 @@ export const DEFAULT_SETTINGS = {
   eqCopy: true,
   paper: "white",
   autoTranslate: false,
-  translateTarget: "auto",
-  translateEngine: "auto",
+  translateTarget: "zh",
+  translateEngine: TRANSLATE_PROXY ? "site" : "google",
   customApi: { baseUrl: "", apiKey: "", model: "" },
 };
 
@@ -36,8 +37,12 @@ export const PAPERS = [
 
 export async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
-  return { ...DEFAULT_SETTINGS, ...(settings || {}),
-           customApi: { ...DEFAULT_SETTINGS.customApi, ...(settings?.customApi || {}) } };
+  const s = { ...DEFAULT_SETTINGS, ...(settings || {}),
+              customApi: { ...DEFAULT_SETTINGS.customApi, ...(settings?.customApi || {}) } };
+  // 以前有「自动」目标语言和「默认」翻译服务，存过的换成现在的默认值
+  if (s.translateTarget === "auto") s.translateTarget = DEFAULT_SETTINGS.translateTarget;
+  if (s.translateEngine === "auto" || (s.translateEngine === "site" && !TRANSLATE_PROXY)) s.translateEngine = DEFAULT_SETTINGS.translateEngine;
+  return s;
 }
 
 export async function setSettings(patch) {

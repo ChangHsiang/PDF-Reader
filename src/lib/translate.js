@@ -3,14 +3,14 @@ import { getSettings } from "./settings";
 
 /**
  * 划词翻译。服务按设置选（见 lib/settings）：
- * - auto：先走网站的 DeepSeek 代理（`/api/translate`，提示词要求保留 LaTeX、术语准确）；
+ * - site：先走网站的 DeepSeek 代理（只有构建时打开了 VITE_TRANSLATE_PROXY 才有这一项）（`/api/translate`，提示词要求保留 LaTeX、术语准确）；
  *   网站没配 key 时回 503 not_configured —— 记住，本次会话不再问，直接用 Google 翻译的公开接口。
  *   网站哪天配上 key，这里不用改就自动换过去
  * - google：只用 Google
  * - bing：必应翻译（网页版用的接口，见 viaBing）
  * - custom：用户自己填的 OpenAI 兼容接口（DeepSeek / OpenAI / 通义 / Kimi …）
  *
- * 方向：设置里选了就按设置（LANGS 里的任一种）；auto = 中文占多数 → 英文，否则 → 中文。
+ * 译成哪种语言：设置里选（LANGS 里的任一种，默认简体中文）。
  */
 
 /** 能译成的语言。code 是设置里存的值；google / bing 是两家各自的语言代码；name 给大模型的提示词用 */
@@ -39,11 +39,6 @@ export const cleanForTranslate = (s) => String(s || "")
   .replace(/(\p{L})-\s+(\p{Ll})/gu, "$1$2")
   .replace(/\s+/g, " ")
   .trim();
-
-const isMostlyCjk = (s) => {
-  const cjk = (s.match(/[㐀-鿿]/g) || []).length;
-  return cjk / Math.max(1, s.replace(/\s/g, "").length) > 0.3;
-};
 
 const systemPrompt = (target) =>
   `You are a professional translation engine. Translate the user's text into ${langOf(target).name}. ` +
@@ -153,8 +148,7 @@ export async function translate(raw) {
   const text = cleanForTranslate(raw);
   if (!text) throw new Error("没有可翻译的文字");
   const s = await getSettings();
-  const target = LANGS.some(l => l.code === s.translateTarget)
-    ? s.translateTarget : (isMostlyCjk(text) ? "en" : "zh");
+  const target = langOf(s.translateTarget).code;
   const engine = s.translateEngine;
   const key = `${engine}:${engine === "custom" ? `${s.customApi.baseUrl}|${s.customApi.model}` : ""}:${target}:${text}`;
   if (!cache.has(key)) {

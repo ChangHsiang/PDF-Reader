@@ -175,19 +175,18 @@ export default function SettingsDialog({ onClose }) {
           </Row>
           <Row title="译成">
             <Dropdown value={s.translateTarget} onChange={v => setSettings({ translateTarget: v })}
-              options={[["auto", "自动（外文→中文）"], ...LANGS.map(l => [l.code, l.label])]} />
+              options={LANGS.map(l => [l.code, l.label])} />
           </Row>
           <div className="pb-2">
             <Row title="翻译服务">
               <Dropdown value={s.translateEngine} onChange={v => setSettings({ translateEngine: v })}
-                options={[["auto", "默认"], ["google", "Google 翻译"], ["bing", "必应翻译"], ["custom", "自定义 API"]]} />
+                options={[...(TRANSLATE_PROXY ? [["site", "DeepSeek（ResearchHub）"]] : []),
+                  ["google", "Google 翻译"], ["bing", "必应翻译"], ["custom", "自定义 API"]]} />
             </Row>
             <div className="text-[11.5px] text-[#9a9a9a] leading-snug -mt-1">
-              {s.translateEngine === "auto" && (TRANSLATE_PROXY
-                ? "优先用 ResearchHub 的 DeepSeek 翻译（保留公式、术语更准），没开通时自动改用 Google 翻译。"
-                : "用 Google 翻译。想要保留公式、术语更准的翻译，可以选「自定义 API」接入 DeepSeek 等大模型。")}
+              {s.translateEngine === "site" && "ResearchHub 网站的 DeepSeek 翻译，保留公式、术语更准。"}
               {s.translateEngine === "google" && "Google 翻译的公开接口，不用配置。"}
-              {s.translateEngine === "bing" && "必应翻译（微软翻译），不用配置，国内一般能直接连。用的是必应网页版自己的接口，网页改版时可能暂时用不了。"}
+              {s.translateEngine === "bing" && "必应翻译的网页接口，不用配置。"}
               {s.translateEngine === "custom" && "兼容 OpenAI 接口格式的服务都可以：DeepSeek、OpenAI、通义千问、Kimi、本地部署的模型等。Key 只保存在这台电脑的浏览器里。"}
             </div>
           </div>
