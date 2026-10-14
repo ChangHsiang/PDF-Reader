@@ -25,6 +25,10 @@
 
 ## 安装
 
+**直接用**：到 [Releases](https://github.com/ChangHsiang/PDF-Reader/releases) 下载最新的 `PDF-Reader-*.zip`，解压到一个固定的文件夹，然后按下面第 1、2 步加载这个文件夹。
+
+**自己构建**：
+
 ```bash
 npm install
 npm run build        # 产物在 dist/
