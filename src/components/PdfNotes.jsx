@@ -467,19 +467,17 @@ function renderAreaThumb(doc, a) {
   const key = `${a.id}:${r.x},${r.y},${r.w},${r.h}`;
   if (thumbCache.has(key)) return thumbCache.get(key);
   const job = thumbQueue.then(async () => {
-    const p = await doc.getPage(a.page);
-    const base = p.getViewport({ scale: 1 });
-    /* 目标宽约 440 设备像素（侧栏 220 CSS px × 2 倍屏）；太小的框放大有上限，
-       不然一个公式框成 4000px 宽的画布 */
-    const scale = Math.min(4, Math.max(0.5, 440 / Math.max(1, base.width * r.w)));
-    const vp = p.getViewport({ scale });
+    /* PDFium 只画框住的那一块（rect 单位是 PDF 点）。目标宽约 440 设备像素（侧栏 220 CSS px × 2 倍屏）；
+       太小的框放大有上限，不然一个公式框成 4000px 宽的画布 */
+    const size = doc.pages[a.page - 1].size;
+    const scale = Math.min(4, Math.max(0.5, 440 / Math.max(1, size.width * r.w)));
+    const rect = { x: r.x * size.width, y: r.y * size.height, w: r.w * size.width, h: Math.min(r.h * size.height, 1400 / scale) };
+    const { bitmap, width, height } = await doc.renderRect(a.page - 1, scale, rect);
     const c = document.createElement("canvas");
-    c.width = Math.max(1, Math.round(vp.width * r.w));
-    c.height = Math.max(1, Math.min(1400, Math.round(vp.height * r.h)));
-    await p.render({
-      canvas: c, viewport: vp,
-      transform: [1, 0, 0, 1, -vp.width * r.x, -vp.height * r.y],
-    }).promise;
+    c.width = Math.max(1, width);
+    c.height = Math.max(1, height);
+    c.getContext("2d").drawImage(bitmap, 0, 0);
+    bitmap.close();
     return c.toDataURL("image/jpeg", 0.85);
   });
   thumbQueue = job.catch(() => {});

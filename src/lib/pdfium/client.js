@@ -20,6 +20,9 @@ export function createPdfium() {
   return {
     open: (docId, buffer) => call("open", { docId, buffer }, [buffer]),
     render: (docId, pageIndex, scale, rect) => call("render", { docId, pageIndex, scale, rect }),
+    renderRect: (docId, pageIndex, scale, rect) => call("renderRect", { docId, pageIndex, scale, rect }),
+    outline: (docId) => call("outline", { docId }),
+    links: (docId, pageIndex) => call("links", { docId, pageIndex }),
     geometry: (docId, pageIndex) => call("geometry", { docId, pageIndex }),
     glyphs: (docId, pageIndex) => call("glyphs", { docId, pageIndex }),
     close: (docId) => call("close", { docId }),

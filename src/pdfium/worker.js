@@ -43,12 +43,25 @@ async function boot() {
 
 const run = (task) => (task?.toPromise ? task.toPromise() : task);
 
+/** 链接 / 目录的目标 → { dest: { pageIndex, x, y } } 或 { url }。XYZ 以外的跳转方式只给页码 */
+function targetOf(t) {
+  if (!t) return { dest: null };
+  const d = t.type === "destination" ? t.destination
+    : t.type === "action" && (t.action.type === 1 || t.action.type === 2) ? t.action.destination : null;
+  if (d) {
+    const p = d.zoom?.mode === 1 ? d.zoom.params : null;
+    return { dest: { pageIndex: d.pageIndex, x: p ? p.x : null, y: p ? p.y : null } };
+  }
+  if (t.type === "action" && t.action.type === 3) return { url: t.action.uri };
+  return { dest: null };
+}
+
 const ops = {
   async open({ docId, buffer }) {
     const n = await boot();
     const doc = await run(n.openDocumentBuffer({ id: docId, content: buffer }));
     docs.set(docId, doc);
-    return { pageCount: doc.pageCount, pages: doc.pages.map(p => ({ index: p.index, size: p.size, rotation: p.rotation })) };
+    return { pageCount: doc.pageCount, pages: doc.pages.map(p => ({ index: p.index, size: p.size, rotation: p.rotation, crop: p.boxes?.crop || null })) };
   },
   /** 渲染整页（或其中一块 rect，单位 PDF 点、原点左上），返回 ImageBitmap（零拷贝转给主线程） */
   async render({ docId, pageIndex, scale, rect }) {
@@ -59,6 +72,30 @@ const ops = {
     const data = img.data instanceof Uint8ClampedArray ? img.data : new Uint8ClampedArray(img.data.buffer || img.data);
     const bmp = await createImageBitmap(new ImageData(data, img.width, img.height));
     return { bitmap: bmp, width: img.width, height: img.height, transfer: [bmp] };
+  },
+  /** 渲染一块（放大后只画看得见的那块）：rect 是页面坐标（PDF 点，原点左上，按显示方向） */
+  async renderRect({ docId, pageIndex, scale, rect }) {
+    const doc = docs.get(docId);
+    const r = { origin: { x: rect.x, y: rect.y }, size: { width: rect.w, height: rect.h } };
+    const img = await run(native.renderPageRect(doc, doc.pages[pageIndex], r, { scaleFactor: scale, dpr: 1, withAnnotations: true }));
+    const data = img.data instanceof Uint8ClampedArray ? img.data : new Uint8ClampedArray(img.data.buffer || img.data);
+    const bmp = await createImageBitmap(new ImageData(data, img.width, img.height));
+    return { bitmap: bmp, width: img.width, height: img.height, transfer: [bmp] };
+  },
+  /** 目录：[{ title, dest: { pageIndex, x, y } | null, url, items: [...] }] */
+  async outline({ docId }) {
+    const doc = docs.get(docId);
+    const res = await run(native.getBookmarks(doc));
+    const conv = (b) => ({ title: b.title, ...targetOf(b.target), items: (b.children || []).map(conv) });
+    return (res?.bookmarks || []).map(conv);
+  },
+  /** 一页上的链接：[{ x, y, w, h（页面坐标，点）, dest | url }] */
+  async links({ docId, pageIndex }) {
+    const doc = docs.get(docId);
+    const annots = await run(native.getPageAnnotations(doc, doc.pages[pageIndex]));
+    return (annots || []).filter(a => a.type === 2 && a.target).map(a => ({
+      x: a.rect.origin.x, y: a.rect.origin.y, w: a.rect.size.width, h: a.rect.size.height, ...targetOf(a.target),
+    })).filter(l => l.dest || l.url);
   },
   async geometry({ docId, pageIndex }) {
     const doc = docs.get(docId);

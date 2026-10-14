@@ -21,7 +21,9 @@ import SettingsDialog from "./SettingsDialog";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup } from "../lib/refs";
-import { refineTextLayer, trimSelection } from "../lib/preciseText";
+import { trimSelection } from "../lib/preciseText";
+import { createPdfium } from "../lib/pdfium/client";
+import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
 import { Avatar, Icon } from "./bits";
 
 /**
@@ -44,44 +46,10 @@ function floatPos(r, vb, need) {
 
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3];
 
-/* 夜间模式的重影：pdf.js 用不透明画布（getContext("2d", { alpha: false })）画页面，浏览器在不透明画布上画字
-   用「彩色亚像素抗锯齿」—— 字的左右边带一圈橙 / 蓝的细边。白底上看不出来，夜间模式整页反相之后，
-   这圈彩边就成了字旁边的重影（踩过：用户说夜间的字看不清、有重影）。
-   开着 grayText 时把 alpha:false 改成 alpha:true：透明画布上浏览器只用灰度抗锯齿，字边没有颜色。
-   pdf.js 画之前自己会先铺一层白底，所以页面看上去和原来一样。只在夜间模式开（白底上彩色抗锯齿更清楚）；
-   切换后要让 pdf.js 重画一遍（画布是每次渲染新建的，见下面 settings.paper 的 effect） */
-let grayText = false;
-if (!HTMLCanvasElement.prototype.__rhPatched) {
-  const orig = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function (type, opts) {
-    if (grayText && type === "2d" && opts?.alpha === false) opts = { ...opts, alpha: true };
-    return orig.call(this, type, opts);
-  };
-  HTMLCanvasElement.prototype.__rhPatched = true;
-}
-
-let libPromise = null;
-function loadPdfjs() {
-  if (!libPromise) {
-    libPromise = (async () => {
-      /* **必须先 await 核心，再 import 组件层，不能并行。**
-         `web/pdf_viewer.mjs` 在模块顶层解构 `globalThis.pdfjsLib`，而这个全局是
-         `build/pdf.mjs` 求值时才挂上去的；并行的话小文件先求值 → TypeError */
-      const core = await import("pdfjs-dist/build/pdf.mjs");
-      globalThis.pdfjsLib ??= core;
-      const [viewer] = await Promise.all([
-        import("pdfjs-dist/web/pdf_viewer.mjs"),
-        import("pdfjs-dist/web/pdf_viewer.css"),
-      ]);
-      core.GlobalWorkerOptions.workerSrc =
-        new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).href;
-      return { core, viewer };
-    })();
-    // 失败不能把 rejected promise 留在缓存里，否则之后每次都瞬间报同一个错
-    libPromise.catch(() => { libPromise = null; });
-  }
-  return libPromise;
-}
+/* PDFium（WebAssembly）跑在一个 Worker 里，整个扩展页共用一个（换论文不重启 wasm） */
+let pdfiumClient = null;
+let docSeq = 0;
+const getPdfium = () => (pdfiumClient ||= createPdfium());
 
 const IconSidebar = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /></>;
 const IconMinus = <line x1="5" y1="12" x2="19" y2="12" />;
@@ -248,14 +216,6 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const transPosRef = useRef(transPos);
   transPosRef.current = transPos;
   const settings = useSettings();
-  // 夜间模式：页面改用灰度抗锯齿重画（原因见文件顶上 grayText 的注释）
-  useEffect(() => {
-    const want = settings.paper === "dark";
-    if (grayText === want) return;
-    grayText = want;
-    apiRef.current?.viewer?.refresh();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.paper, doc]);
   // 公式旁的「复制 LaTeX」按钮（components/EqCopy.js）
   useEquationCopy(viewerElRef, apiRef, doc, paperKey.replace(/^arxiv:/, ""), settings.eqCopy);
   const autoTransRef = useRef(false);
@@ -346,7 +306,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
      就把整篇重新抽一遍，几十页的论文要白跑好几秒 */
   const pageTextsRef = useRef({ doc: null, job: null });
   useEffect(() => {
-    if (!doc || foreignIds.length === 0) return;
+    if (!doc || foreignIds.length === 0 || !doc.getPage) return;   // PDFium 版的取全文在第 3 步接上
     let alive = true;
     (async () => {
       if (pageTextsRef.current.doc !== doc) {
@@ -410,22 +370,18 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     }, []),
   });
 
-  /* ── pdf.js ─────────────────────────────────────────────────── */
+  /* ── PDFium（lib/pdfium/viewer.js）──────────────────────────────────
+     整个文件先下载下来交给 Worker 里的 PDFium 解析（pdf.js 那种按需分段下载这里不需要：arXiv 的论文
+     一般几 MB，下载比解析慢得多，解析 15 页才几十毫秒） */
   useEffect(() => {
     let alive = true;
-    let pdf = null, viewer = null;
+    let viewer = null, handle = null;
     (async () => {
       try {
-        const { core, viewer: V } = await loadPdfjs();
-        if (!alive) return;
-        const eventBus = new V.EventBus();
-        const linkService = new V.PDFLinkService({ eventBus });
-        const findController = new V.PDFFindController({ eventBus, linkService });
-        viewer = new V.PDFViewer({
-          container: containerRef.current, viewer: viewerElRef.current,
-          eventBus, linkService, findController, textLayerMode: 1,
-        });
-        linkService.setViewer(viewer);
+        const pdf = getPdfium();
+        const eventBus = new EventBus();
+        viewer = new PdfiumViewer({ container: containerRef.current, viewer: viewerElRef.current, eventBus });
+        const linkService = makeLinkService(viewer);
         eventBus.on("pagesinit", () => {
           viewer.currentScaleValue = "page-actual";     // 默认 100%（纸面原尺寸），不按宽度撑满
           if (alive) setZoom(viewer.currentScale);
@@ -434,88 +390,31 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         // presetValue：page-width / page-fit 这类「自动」倍数时有值，下拉菜单靠它打勾
         eventBus.on("scalechanging", (e) => { if (alive) { setZoom(e.scale); setScaleMode(e.presetValue || null); } });
 
-        const asset = (p) => chrome.runtime.getURL(`pdfjs/${p}/`);
-        pdf = await core.getDocument({
-          url, rangeChunkSize: 65536,
-          // 字体 / CMap / wasm 解码器都从扩展包里取（vite.config 里拷进来的），不走 CDN
-          cMapUrl: asset("cmaps"), cMapPacked: true,
-          standardFontDataUrl: asset("standard_fonts"), wasmUrl: asset("wasm"),
-          isEvalSupported: false,          // 扩展页的 CSP 不许 eval
-        }).promise;
-        if (!alive) { pdf.destroy(); return; }
-        viewer.setDocument(pdf);
-        linkService.setDocument(pdf, null);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`下载 PDF 失败（${res.status}）`);
+        const buf = await res.arrayBuffer();
+        const bytes = new Uint8Array(buf.slice(0));       // 留一份原始字节给「下载」用（buf 会被转交给 Worker）
+        const docId = `d${++docSeq}`;
+        const info = await pdf.open(docId, buf);
+        if (!alive) { pdf.close(docId); return; }
+        handle = new PdfiumDocument(pdf, docId, info, bytes);
+        viewer.setDocument(handle);
         apiRef.current = { viewer, linkService, eventBus };
-        setTotal(pdf.numPages);
-        setDoc(pdf);
-        pdf.getOutline().then(o => { if (alive) setOutline(o || []); }).catch(() => setOutline([]));
+        setTotal(handle.numPages);
+        setDoc(handle);
+        handle.outline().then(o => { if (alive) setOutline(o || []); }).catch(() => { if (alive) setOutline([]); });
       } catch (e) {
-        // 真实原因必须能看见：「加载失败」四个字和 pdf.js 抢跑的 TypeError 长得一模一样
         console.error("[PdfViewer]", url, e);
         if (alive) setErr(e?.message || "加载失败");
       }
     })();
     return () => {
       alive = false;
-      try { viewer?.setDocument(null); } catch { /* 已经拆了 */ }
-      try { pdf?.destroy(); } catch { /* 同上 */ }
+      try { viewer?.destroy(); } catch { /* 已经拆了 */ }
+      try { handle?.destroy(); } catch { /* 同上 */ }
       apiRef.current = null;
     };
   }, [url]);
-
-  /* 文字层按词对齐（lib/preciseText）：页面画完（画布像素才有）、文字层也出来之后做一次。
-     查找高亮清掉时 pdf.js 会把 span 的文字还原，那几页清掉标记重做 */
-  useEffect(() => {
-    const api = apiRef.current;
-    const root = viewerElRef.current;
-    if (!doc || !api || !root) return;
-    /* **等滚动停下来、在空闲时一页一页地做**：拆一页要强制重排两次（几千个元素），
-       放在滚动中做，新页面一进来就是一两百毫秒的卡顿（实测滚动的 p95 从 95ms 掉到 239ms）。
-       对齐只在选字的时候有用，滚动时根本用不上 */
-    const container = containerRef.current;
-    const dirty = new Set();
-    let lastScroll = 0, timer = 0, idleId = 0;
-    const ric = window.requestIdleCallback || ((f) => setTimeout(() => f({ timeRemaining: () => 8 }), 50));
-    const cic = window.cancelIdleCallback || clearTimeout;
-    const work = (deadline) => {
-      idleId = 0;
-      if (performance.now() - lastScroll < 200) { schedule(); return; }      // 又滚起来了：再等
-      for (const n of [...dirty]) {
-        if (deadline.timeRemaining() < 4) break;                              // 这一轮空闲用完了，下一轮接着做
-        dirty.delete(n);
-        if (api.viewer.getPageView(n - 1)?.renderingState !== 3) continue;   // 3 = FINISHED：画布画完了
-        const el = root.querySelector(`.page[data-page-number="${n}"]`);
-        if (el) refineTextLayer(el);
-      }
-      if (dirty.size) schedule();
-    };
-    const schedule = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => { if (!idleId) idleId = ric(work, { timeout: 2000 }); }, 220);
-    };
-    const onScroll = () => { lastScroll = performance.now(); if (dirty.size) schedule(); };
-    container?.addEventListener("scroll", onScroll, { passive: true });
-    const queue = (n) => { if (n) { dirty.add(n); schedule(); } };
-    const onPage = ({ pageNumber }) => queue(pageNumber);
-    const onMatches = () => root.querySelectorAll(".page").forEach(el => {
-      const tl = el.querySelector(".textLayer");
-      // 查找高亮清掉了：被还原的那几行要重拆（已经拆好的行 refine 里会跳过，不会重复做）
-      if (tl && !tl.querySelector(".highlight")) delete tl.dataset.rhDone;
-      queue(Number(el.dataset.pageNumber));
-    });
-    api.eventBus.on("textlayerrendered", onPage);
-    api.eventBus.on("pagerendered", onPage);
-    api.eventBus.on("updatetextlayermatches", onMatches);
-    root.querySelectorAll(".page").forEach(el => queue(Number(el.dataset.pageNumber)));
-    return () => {
-      clearTimeout(timer);
-      if (idleId) cic(idleId);
-      container?.removeEventListener("scroll", onScroll);
-      api.eventBus.off("textlayerrendered", onPage);
-      api.eventBus.off("pagerendered", onPage);
-      api.eventBus.off("updatetextlayermatches", onMatches);
-    };
-  }, [doc]);
 
   /* 容器宽度变了要自己重排（组件层不管，官方 viewer 的 app.js 才管）。
      只有「自动」类倍数才跟着变，用户手动定过的别改 */
@@ -1506,7 +1405,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         </div>
       </div>
 
-      <div className="relative flex-1 flex min-h-0">
+      {/* 页面颜色（护眼）的类挂在这一层：正文和左侧栏的缩略图都在它里面，一起变色 */}
+      <div className={`relative flex-1 flex min-h-0 rh-paper-${settings.paper || "white"}`}>
         {/* 左侧栏：绝对定位盖在阅读区上，transform 滑进滑出（不改正文宽度，所以页面不会跟着重排 / 跳动）。
             关着的时候也挂着（inert + 移出视口）：再打开时目录展开状态、笔记筛选条件都还在，
             缩略图在视口外不会被 IntersectionObserver 触发渲染 */}
@@ -1607,7 +1507,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
             </div>
           )}
           <div ref={containerRef}
-            className={`absolute inset-0 overflow-auto overscroll-contain thin-scrollbar rh-paper-${settings.paper || "white"} ${tool === "area" ? "rh-area-mode" : tool === "pen" ? "rh-area-mode rh-pen-mode" : tool === "eraser" ? "rh-area-mode rh-eraser-mode" : tool === "textbox" ? "rh-area-mode rh-textbox-mode" : tool === "note" ? "rh-area-mode rh-note-mode" : ""}`}>
+            className={`absolute inset-0 overflow-auto overscroll-contain thin-scrollbar ${tool === "area" ? "rh-area-mode" : tool === "pen" ? "rh-area-mode rh-pen-mode" : tool === "eraser" ? "rh-area-mode rh-eraser-mode" : tool === "textbox" ? "rh-area-mode rh-textbox-mode" : tool === "note" ? "rh-area-mode rh-note-mode" : ""}`}>
             {/* pdf.js 往这个元素里插 / 删 .page，React 的东西不和它混在一起 */}
             <div ref={viewerElRef} className="pdfViewer relative" />
             {/* 浮层另起一层，和 .pdfViewer 左上角重合、一起滚；坐标照旧按 .pdfViewer 的盒子算。
@@ -1779,14 +1679,14 @@ function Thumbs({ doc, total, page, onGo }) {
         if (done.current.has(n)) continue;
         done.current.add(n);
         try {
-          const p = await doc.getPage(n);
-          const base = p.getViewport({ scale: 1 });
-          // 按屏幕的实际像素比画（高分屏清楚，普通屏不白白画两倍大）
+          // 按屏幕的实际像素比画（高分屏清楚，普通屏不白白画两倍大）；PDFium 在 Worker 里画好传回来
           const dpr = Math.min(2, window.devicePixelRatio || 1);
-          const vp = p.getViewport({ scale: (264 * dpr) / base.width });
+          const pg = doc.pages[n - 1];
+          const { bitmap, width, height } = await doc.render(n - 1, (264 * dpr) / pg.size.width);
           const c = document.createElement("canvas");
-          c.width = vp.width; c.height = vp.height;
-          await p.render({ canvas: c, viewport: vp }).promise;
+          c.width = width; c.height = height;
+          c.getContext("2d").drawImage(bitmap, 0, 0);
+          bitmap.close();
           /* 画完转成 JPEG 图片、扔掉画布：画布的像素一直占着内存（一页约 1MB，几百页的书就是几百 MB），
              图片的解码数据浏览器在它滚出视野后可以回收 */
           const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.85));
@@ -1812,7 +1712,7 @@ function Thumbs({ doc, total, page, onGo }) {
           className={`w-full mb-2 p-0 bg-transparent border-2 rounded cursor-pointer block
             ${page === i + 1 ? "border-[#7ec8e3]" : "border-transparent"}`}>
           <div data-p={i + 1} ref={el => { holders.current[i] = el; }}
-            className="w-full bg-[#fff]" style={{ aspectRatio: "1 / 1.414" }} />
+            className="rh-thumb relative w-full bg-[#fff]" style={{ aspectRatio: "1 / 1.414" }} />
           <div className="text-[10.5px] text-[#b8b8b8] font-sans tabular-nums text-center pt-0.5">{i + 1}</div>
         </button>
       ))}

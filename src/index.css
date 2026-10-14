@@ -11,6 +11,20 @@ body { font-family: theme("fontFamily.sans"); }
    （网站 docs/dev/papers.md「PDF 自渲染」那段有完整的实测数据） */
 .pdfViewer .page { box-sizing: content-box; }
 
+/* PDFium 阅读器内核（lib/pdfium/viewer.js）的页面样式：照 pdf.js 的 pdf_viewer.css 抄最少的几条，
+   DOM 结构和尺寸关系保持一样（页面 9px 透明边框、画布区 = 页面内容区），上面那些功能的坐标换算不用改 */
+.pdfViewer { --scale-factor: 1; padding-bottom: 12px; }
+.pdfViewer .page {
+  --total-scale-factor: var(--scale-factor);
+  position: relative; margin: 1px auto -8px; border: 9px solid transparent;
+  background-clip: content-box; background-color: #fff; overflow: visible;
+}
+.pdfViewer .canvasWrapper { position: absolute; inset: 0; overflow: hidden; }
+.pdfViewer .canvasWrapper canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
+.pdfViewer .annotationLayer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.pdfViewer .annotationLayer .linkAnnotation { position: absolute; }
+.pdfViewer .annotationLayer .linkAnnotation > a { position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
+
 /* 文字层按词拆出来的小块（lib/preciseText.js）。pdf.js 给文字层里所有 span 都写了 position:absolute，
    在 markedContent 里的还会被设成 font-size:0、再叠一层整行的拉伸 —— 小块要排成一行、字号跟着这一行走，
    宽度由小块自己的字间距（letter-spacing）调 */
@@ -46,11 +60,12 @@ body { font-family: theme("fontFamily.sans"); }
 .rh-paper-green { --rh-paper: #cce8cf; }
 .rh-paper-sepia { --rh-paper: #f4ecd8; }
 .rh-paper-gray  { --rh-paper: #e4e4e4; }
-:is(.rh-paper-green, .rh-paper-sepia, .rh-paper-gray) .page .canvasWrapper::after {
+:is(.rh-paper-green, .rh-paper-sepia, .rh-paper-gray) :is(.page .canvasWrapper, .rh-thumb)::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: var(--rh-paper); mix-blend-mode: multiply;
 }
-.rh-paper-dark .page .canvasWrapper { filter: invert(0.9) hue-rotate(180deg); }
+.rh-paper-dark :is(.page .canvasWrapper, .rh-thumb) { filter: invert(0.9) hue-rotate(180deg); }
+/* 缩略图（左侧栏）跟着页面一起变色：同一层叠加 / 同一个反相 */
 
 /* 每一页自成一个层叠上下文。pdf.js 给每个链接注解一个递增的 z-index（链接多的页能到上百），
    不隔离的话它们会跟页面外的浮层（文献卡片、编辑条、气泡，z-index 45 左右）比大小 ——
