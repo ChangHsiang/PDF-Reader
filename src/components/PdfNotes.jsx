@@ -557,11 +557,21 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
         )}
         <div className="flex-1 min-w-0" />
         {mine ? (
-          <span className="hidden group-hover:flex items-center gap-0.5 shrink-0">
-            <button onClick={e => { e.stopPropagation(); onEdit(a); }} title="编辑批注和标签"
-              className="text-[10.5px] text-[#c8c8c8] px-1 rounded bg-transparent border-none cursor-pointer hover:bg-[#ffffff26]">改</button>
-            <button onClick={e => { e.stopPropagation(); onDelete(a); }} title="删除"
-              className="text-[10.5px] text-[#ff9a9a] px-1 rounded bg-transparent border-none cursor-pointer hover:bg-[#ffffff26]">删</button>
+          /* 编辑 / 删除：图标按钮（原来是「改」「删」两个字，像随手写的批注，不像按钮）。
+             平时灰色，指上去出圆底；删除指上去变红，提醒这是破坏性操作 */
+          <span className="hidden group-hover:flex items-center gap-0.5 shrink-0 -my-1">
+            <button onClick={e => { e.stopPropagation(); onEdit(a); }} title="编辑批注和标签" aria-label="编辑"
+              className="w-6 h-6 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer
+                         text-[#b8b8b8] hover:text-[#fff] hover:bg-[#ffffff1f]">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+            </button>
+            <button onClick={e => { e.stopPropagation(); onDelete(a); }} title="删除" aria-label="删除"
+              className="w-6 h-6 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer
+                         text-[#b8b8b8] hover:text-[#ff8a8a] hover:bg-[#ff8a8a1f]">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"
+                strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" /><path d="M10 11v5M14 11v5" /></svg>
+            </button>
           </span>
         ) : (
           <button onClick={e => { e.stopPropagation(); onCopy(a); }} disabled={copied}
