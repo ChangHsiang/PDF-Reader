@@ -55,7 +55,7 @@ body { font-family: theme("fontFamily.sans"); }
 .rh-textbox-mode .page { cursor: text; }
 .rh-note-mode .page { cursor: crosshair; }
 
-/* 附注图标指上去浮出的内容卡（PdfNotes 的 noteIconEl）。纯 CSS 显隐，不挂事件 */
+/* 附注图标 / 框选框指上去浮出的内容卡（PdfNotes 的 hoverTip）。纯 CSS 显隐，不挂事件 */
 .rh-note-tip {
   display: none; position: absolute; left: calc(100% + 8px); top: 0; z-index: 5;
   width: max-content; max-width: 240px; padding: 8px 12px; border-radius: 4px;
@@ -63,7 +63,8 @@ body { font-family: theme("fontFamily.sans"); }
   color: #222; font: 12.5px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
   pointer-events: none; cursor: default; text-align: left;
 }
-.rh-note:hover .rh-note-tip { display: block; }
+.rh-has-tip:hover > .rh-note-tip { display: block; }
+.rh-note-tip.rh-tip-left { left: auto; right: calc(100% + 8px); }
 .rh-note-tip b { display: block; font-size: 12px; margin-bottom: 2px; }
 .rh-note-tip-body { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
 .rh-note-tip-more { margin-top: 3px; font-size: 11px; color: #8a7f55; }

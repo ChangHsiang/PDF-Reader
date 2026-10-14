@@ -121,16 +121,24 @@ export function noteIconEl(a, on) {
   d.innerHTML = NOTE_SVG;
   d.dataset.annId = String(a.id);
   /* 指上去浮出的内容卡（CSS :hover 控制显隐，见 index.css 的 .rh-note-tip）。卡片打开着时不要它 */
-  const replies = a.style?.replies || [];
-  if (!on && (a.body || replies.length)) {
-    const t = document.createElement("div");
-    t.className = "rh-note-tip";
-    t.innerHTML = `<b>${escHtml(a._author || "")}</b>` +
-      (a.body ? `<div class="rh-note-tip-body">${escHtml(a.body)}</div>` : "") +
-      (replies.length ? `<div class="rh-note-tip-more">${replies.length} 条回复</div>` : "");
-    d.appendChild(t);
-  }
+  if (!on) { const t = hoverTip(a); if (t) { d.classList.add("rh-has-tip"); d.appendChild(t); } }
   return d;
+}
+
+/**
+ * 指上去浮出的浅黄内容卡：作者 + 批注 (+ 回复条数)。附注图标和框选框共用（框选原来用浏览器自带的 title，
+ * 灰底小字、要停一秒才出来，和附注不是一个样子）。没内容就不出（返回 null）。
+ * side = "left" 时贴在宿主左边外侧（宿主太靠页面右边时用）
+ */
+function hoverTip(a, side = "right") {
+  const replies = a.style?.replies || [];
+  if (!a.body && !replies.length) return null;
+  const t = document.createElement("div");
+  t.className = "rh-note-tip" + (side === "left" ? " rh-tip-left" : "");
+  t.innerHTML = (a._author ? `<b>${escHtml(a._author)}</b>` : "") +
+    (a.body ? `<div class="rh-note-tip-body">${escHtml(a.body)}</div>` : "") +
+    (replies.length ? `<div class="rh-note-tip-more">${replies.length} 条回复</div>` : "");
+  return t;
 }
 
 const TEXT_KEY = "rh_text_style";
@@ -208,7 +216,7 @@ export function useHighlightLayer(viewerElRef, apiRef, ready, annotations, { act
       /* **幂等**：这一页要画的东西和上次一模一样就直接返回，一个节点都不动。
          除了省事，更要紧的是它能让「画一次 → 触发事件 → 又来画一次」这种
          回环**自己收敛**（第二次不产生任何 DOM 变化，也就不会有第三次）。 */
-      const sig = list.map(a => `${a.id}/${a.kind}/${a.color}/${a.style?.dash}/${a.style?.width}/${a.style?.fill ? 1 : 0}/${a.style?.size}/${a.style?.spacing}/${a.kind === "text" || a.kind === "note" ? `${a.body}|${a.rects?.[0]?.x},${a.rects?.[0]?.y},${a.rects?.[0]?.w}|${a._author || ""}|${a.style?.replies?.length || 0}` : ""}/${a.id === hiddenId ? 1 : 0}/${a.id === activeId ? 1 : 0}`).join("|");
+      const sig = list.map(a => `${a.id}/${a.kind}/${a.color}/${a.style?.dash}/${a.style?.width}/${a.style?.fill ? 1 : 0}/${a.style?.size}/${a.style?.spacing}/${a.kind === "text" || a.kind === "note" || a.kind === "area" ? `${a.body}|${a.rects?.[0]?.x},${a.rects?.[0]?.y},${a.rects?.[0]?.w}|${a._author || ""}|${a.style?.replies?.length || 0}` : ""}/${a.id === hiddenId ? 1 : 0}/${a.id === activeId ? 1 : 0}`).join("|");
       if (layer) {
         if (layer.dataset.sig === sig) return;
       } else {
@@ -263,7 +271,12 @@ export function useHighlightLayer(viewerElRef, apiRef, ready, annotations, { act
             /* 不填充的框只有边能点：框里的字还要能划选（框住一段话再在里面高亮是常见操作） */
             `pointer-events:${fill ? "auto" : "none"};`;
           d.dataset.annId = String(a.id);
-          d.title = a.body || "区域选取";
+          /* 批注：指上去浮出和附注一样的浅黄卡片，贴在框的右上角外侧；框太靠页面右边就放到左边。
+             正在选中（编辑条开着）时不出，免得和编辑条叠在一起 */
+          if (!on) {
+            const t = hoverTip(a, r.x + r.w > 0.7 ? "left" : "right");
+            if (t) { d.classList.add("rh-has-tip"); d.appendChild(t); }
+          }
           if (!fill) {
             const HIT = 7;   // 边上的点击热区（px），比线本身宽，好点中
             [["0", "auto", "-4px", "-4px", `${HIT}px`, "auto"], ["auto", "0", "-4px", "-4px", `${HIT}px`, "auto"],
