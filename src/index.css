@@ -66,6 +66,12 @@ body { font-family: theme("fontFamily.sans"); }
 .rh-has-tip:hover > .rh-note-tip { display: block; }
 .rh-note-tip.rh-tip-left { left: auto; right: calc(100% + 8px); }
 .rh-note-tip.rh-tip-below { left: 0; top: calc(100% + 6px); }
+
+/* 删除按钮的「待删除」状态（PdfNotes 的 DeleteButton）：盖子掀开 + 整个按钮轻轻抖一下，提示再点一下就删 */
+.rh-lid { transition: transform .15s ease-out; transform-box: fill-box; transform-origin: 0% 100%; }
+.rh-armed .rh-lid { transform: translate(-1px, -2px) rotate(-22deg); }
+.rh-armed { animation: rh-shake .32s ease-in-out; }
+@keyframes rh-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 50% { transform: rotate(7deg); } 75% { transform: rotate(-4deg); } }
 .rh-note-tip b { display: block; font-size: 12px; margin-bottom: 2px; }
 .rh-note-tip-body { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
 .rh-note-tip-more { margin-top: 3px; font-size: 11px; color: #8a7f55; }

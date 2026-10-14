@@ -584,12 +584,7 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"
                 strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
             </button>
-            <button onClick={e => { e.stopPropagation(); onDelete(a); }} title="删除" aria-label="删除"
-              className="w-6 h-6 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer
-                         text-[#b8b8b8] hover:text-[#ff8a8a] hover:bg-[#ff8a8a1f]">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"
-                strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" /><path d="M10 11v5M14 11v5" /></svg>
-            </button>
+            <DeleteButton onConfirm={() => onDelete(a)} title="删除" size={24} icon={13} round />
           </span>
         ) : (
           <button onClick={e => { e.stopPropagation(); onCopy(a); }} disabled={copied}
@@ -988,6 +983,40 @@ const DashSample = ({ dash, width = 2, color = "#e6e6e6" }) => (
   <span className="block w-[22px]" style={{ borderTop: `${width}px ${dash} ${color}` }} />
 );
 
+/**
+ * 删除按钮，要点两下（笔记列表、标注编辑条、附注卡片共用）。不用「确认删除」这种文字，在按钮本身上做状态：
+ * - 平时：灰色垃圾桶；指上去变红、出淡红底
+ * - 点第一下：「待删除」—— 实心红底、白色图标，垃圾桶盖子掀开并抖一下；title 变成「再点一下删除」
+ * - 再点一下才删。3 秒内没点、或者鼠标移开（给 0.8 秒余量），自动回到平时的样子
+ * light：放在浅色底上（附注卡片）；round：圆形（列表里的小按钮）
+ */
+export function DeleteButton({ onConfirm, title = "删除", size = 24, icon = 14, light = false, round = false }) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef(0);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const disarmIn = (ms) => { clearTimeout(timer.current); timer.current = setTimeout(() => setArmed(false), ms); };
+  const click = (e) => {
+    e.stopPropagation();
+    if (armed) { clearTimeout(timer.current); setArmed(false); onConfirm(); return; }
+    setArmed(true);
+    disarmIn(3000);
+  };
+  const idle = light ? "text-[#666] hover:text-[#d93025] hover:bg-[#d930251a]" : "text-[#c0c0c0] hover:text-[#ff8a8a] hover:bg-[#ff8a8a1f]";
+  return (
+    <button onClick={click} onMouseLeave={() => { if (armed) disarmIn(800); }} onMouseEnter={() => { if (armed) disarmIn(3000); }}
+      title={armed ? "再点一下删除" : title} aria-label={armed ? "再点一下删除" : title}
+      className={`${round ? "rounded-full" : "rounded-md"} shrink-0 flex items-center justify-center border-none cursor-pointer transition-colors
+        ${armed ? "rh-armed bg-[#d93025] text-[#fff] hover:bg-[#b3261e]" : `bg-transparent ${idle}`}`}
+      style={{ width: size, height: size }}>
+      <svg viewBox="0 0 24 24" width={icon} height={icon} fill="none" stroke="currentColor" strokeWidth="2"
+        strokeLinecap="round" strokeLinejoin="round" style={{ overflow: "visible" }}>
+        <g className="rh-lid"><path d="M3 6h18" /><path d="M8 6V4h8v2" /></g>
+        <path d="M6 6l1 14h10l1-14" /><path d="M10 11v5M14 11v5" />
+      </svg>
+    </button>
+  );
+}
+
 /** 一排颜色方块。框选、画笔、文本框三处共用，形状和顺序都一样（顺序 = COLORS 的顺序） */
 function ColorSwatches({ value, onChange, light }) {
   return (
@@ -1127,7 +1156,6 @@ export function AreaStyleMenu({ value, onChange, dir = "right", corner = false }
    自己的：换颜色（框还能换线型粗细）/ 批注 / 删除；别人的：收藏。
    和划选工具条一样放在 .pdfViewer 的内容坐标里，跟着页面滚 */
 export function AnnMenu({ pos, a, mine, copied, author, onColor, onStyle, onEdit, onDelete, onCopy, onClose }) {
-  const [confirm, setConfirm] = useState(false);
   const menuRef = useRef(null);
   useKeepInView(menuRef, [pos?.x, pos?.y, pos?.below, a?.id]);
   if (!pos || !a) return null;
@@ -1148,7 +1176,7 @@ export function AnnMenu({ pos, a, mine, copied, author, onColor, onStyle, onEdit
             onWidth={isArea ? (w => onStyle({ width: w })) : null} />
           <div className="self-stretch border-l border-[#ffffff26]" />
           {/* 批注 / 删除：图标按钮（和笔记列表里的同一套：铅笔、垃圾桶），文字放进 title。
-              原来是「批注」「删除」两行字，挤在颜色块旁边像两条菜单项。删除仍要点两下：第二下才是红色的「确认删除」 */}
+              原来是「批注」「删除」两行字，挤在颜色块旁边像两条菜单项。删除要点两下（见 DeleteButton） */}
           <div className="flex flex-col gap-1 items-center">
             <button onClick={onEdit} title={a.body ? "编辑批注和标签" : "写批注 / 加标签"} aria-label="批注"
               className="w-8 h-8 rounded-md flex items-center justify-center bg-transparent border-none cursor-pointer
@@ -1156,19 +1184,7 @@ export function AnnMenu({ pos, a, mine, copied, author, onColor, onStyle, onEdit
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"
                 strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
             </button>
-            {confirm ? (
-              <button onClick={onDelete} title="再点一下删除这条标注"
-                className="h-8 px-2 rounded-md text-[11.5px] font-sans whitespace-nowrap border-none cursor-pointer text-[#fff] bg-[#c0392b] hover:bg-[#a93226]">
-                确认删除
-              </button>
-            ) : (
-              <button onClick={() => setConfirm(true)} title="删除这条标注" aria-label="删除"
-                className="w-8 h-8 rounded-md flex items-center justify-center bg-transparent border-none cursor-pointer
-                           text-[#d0d0d0] hover:text-[#ff8a8a] hover:bg-[#ff8a8a1f]">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"
-                  strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" /><path d="M10 11v5M14 11v5" /></svg>
-              </button>
-            )}
+            <DeleteButton onConfirm={onDelete} title="删除这条标注" size={32} icon={16} />
           </div>
         </div>
       ) : (
@@ -1466,7 +1482,6 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
   const bodyRef = useRef(null);
   const replyRef = useRef(null);
   const [reply, setReply] = useState("");
-  const [confirmDel, setConfirmDel] = useState(false);     // 删除要点两下（同标注编辑条）：第一下变成红色「确认删除」
   const pageEl = viewerEl?.querySelector(`.page[data-page-number="${draft.page}"]`);
   const mine = draft.mine;
   const replies = draft.replies || [];
@@ -1521,17 +1536,7 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
           <span className="text-[13px] font-bold truncate">{draft.author || "我"}</span>
           <span className="text-[11.5px] text-[#888] shrink-0">{fmtTime(draft.at)}</span>
           <span className="flex-1" />
-          {mine && draft.id && (confirmDel ? (
-            <button onClick={onDelete} title="再点一下删除这条附注（连同回复）"
-              className="h-6 px-2 rounded text-[11.5px] font-sans whitespace-nowrap border-none cursor-pointer text-[#fff] bg-[#c0392b] hover:bg-[#a93226]">
-              确认删除
-            </button>
-          ) : (
-            <button onClick={() => setConfirmDel(true)} title="删除这条附注" aria-label="删除" className={`${ib} hover:text-[#c0392b]`}>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-            </button>
-          ))}
+          {mine && draft.id && <DeleteButton onConfirm={onDelete} title="删除这条附注（连同回复）" size={24} icon={14} light />}
           <button onClick={onDone} title="关闭（Esc）" className={ib}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
