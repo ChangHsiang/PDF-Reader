@@ -1,6 +1,6 @@
 # arXiv PDF 笔记阅读器（浏览器扩展）
 
-打开 arXiv 论文的 PDF 时，换成一个带笔记、标注、文献卡片和划词翻译的阅读器。Chrome / Edge（Manifest V3），基于 pdf.js。
+打开 arXiv 论文的 PDF 时，换成一个带笔记、标注、文献卡片和划词翻译的阅读器。Chrome / Edge（Manifest V3）。PDF 用 [PDFium](https://pdfium.googlesource.com/pdfium/)（Chrome / Edge 自带阅读器用的同一个引擎，WebAssembly 版来自 [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer)）渲染和取字。
 
 界面参照 Edge 自带的 PDF 阅读器和 Google 学术的 PDF 阅读器。目前只支持 arXiv。
 
@@ -70,7 +70,7 @@ npm run build        # 产物在 dist/
 | `src/components/ImageLightbox.jsx` | 插图全屏查看器 |
 | `src/components/EqCopy.js` | 公式旁的「复制 LaTeX」 |
 | `src/lib/notes.js` | 本地存储、和网站同步、导出 Markdown |
-| `src/lib/preciseText.js` | 按画布字形校准文字层（选字对齐） |
+| `src/lib/pdfium/` · `src/pdfium/worker.js` | 阅读器内核：Worker 里跑 PDFium，按需渲染、按字形外框建文字层、搜索 |
 | `src/lib/refs.js` · `cite.js` · `openalex.js` · `figures.js` | 参考文献解析、引用格式、版本 / 相关文章、插图 |
 | `src/lib/latexSource.js` | 解析 arXiv 源码包，公式编号 → LaTeX |
 | `src/lib/translate.js` | 划词翻译 |

@@ -44,8 +44,8 @@ const ACCENT = {
   "˙": "̇", "˝": "̋",
 };
 
-/** 字符 → 词 / 空格 / 换行。返回 [{ t: "w", text, x, y, w, h } | { t: "s" } | { t: "br" }]，坐标单位：点 */
-export function tokenize({ codes, boxes, flags }) {
+/** 字符 → 词 / 空格 / 换行。返回 [{ t: "w", text, x, y, w, h, b（第一个字的基线） } | { t: "s" } | { t: "br" }]，坐标单位：点 */
+export function tokenize({ codes, boxes, flags, base }) {
   const out = [];
   let cur = null;
   const flush = () => { if (cur) { out.push(cur); cur = null; } };
@@ -88,7 +88,7 @@ export function tokenize({ codes, boxes, flags }) {
         pushSep(sameLine ? "s" : "br");
       }
     }
-    if (!cur) cur = { t: "w", text: ch, x, y, w, h };
+    if (!cur) cur = { t: "w", text: ch, x, y, w, h, b: base?.[i] || y + h };
     else {
       const x1 = Math.max(cur.x + cur.w, x + w), y0 = Math.min(cur.y, y), y1 = Math.max(cur.y + cur.h, y + h);
       cur.text += ch;
@@ -265,4 +265,39 @@ export function installSelectionHelper(container) {
     window.removeEventListener("mouseup", up);
     if (drag) clearInterval(drag.timer);
   };
+}
+
+/** 选区两头的空白去掉（双击选词时 Windows 上会连带选中后面的空格；文字层里词和词之间是单独的空格 span） */
+export function trimSelection(sel) {
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false;
+  const r = sel.getRangeAt(0).cloneRange();
+  const root = r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentNode;
+  const tw = document.createTreeWalker(root.closest?.(".textLayer") || root, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  for (let n = tw.nextNode(); n; n = tw.nextNode()) if (r.intersectsNode(n)) textNodes.push(n);
+  if (!textNodes.length) return false;
+  const ws = (ch) => /\s/.test(ch);
+  let changed = false;
+  // 起点往后挪
+  for (let i = 0; i < textNodes.length; i++) {
+    const n = textNodes[i];
+    let off = n === r.startContainer ? r.startOffset : 0;
+    while (off < n.length && ws(n.data[off])) off++;
+    if (off < n.length) {
+      if (n !== r.startContainer || off !== r.startOffset) { r.setStart(n, off); changed = true; }
+      break;
+    }
+  }
+  // 终点往前挪
+  for (let i = textNodes.length - 1; i >= 0; i--) {
+    const n = textNodes[i];
+    let off = n === r.endContainer ? r.endOffset : n.length;
+    while (off > 0 && ws(n.data[off - 1])) off--;
+    if (off > 0) {
+      if (n !== r.endContainer || off !== r.endOffset) { r.setEnd(n, off); changed = true; }
+      break;
+    }
+  }
+  if (changed && !r.collapsed) { sel.removeAllRanges(); sel.addRange(r); }
+  return changed;
 }

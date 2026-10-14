@@ -5,7 +5,7 @@
 html, body { margin: 0; }
 body { font-family: theme("fontFamily.sans"); }
 
-/* pdf.js 给 `.pdfViewer .page` 加了 9px 透明边框，宽高按 content-box 写；
+/* `.pdfViewer .page` 有 9px 透明边框，宽高按 content-box 写（lib/pdfium/viewer 照 pdf.js 的结构）；
    Tailwind preflight 的 `*{box-sizing:border-box}` 会把这 9px 从宽高里扣掉，
    画布被压窄、文字层 / 注解层却按原网格定位 → 越往右下偏得越多。拨回 content-box。
    （网站 docs/dev/papers.md「PDF 自渲染」那段有完整的实测数据） */
@@ -36,37 +36,9 @@ body { font-family: theme("fontFamily.sans"); }
 .pdfViewer .annotationLayer .linkAnnotation { position: absolute; }
 .pdfViewer .annotationLayer .linkAnnotation > a { position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
 
-/* 文字层按词拆出来的小块（lib/preciseText.js）。pdf.js 给文字层里所有 span 都写了 position:absolute，
-   在 markedContent 里的还会被设成 font-size:0、再叠一层整行的拉伸 —— 小块要排成一行、字号跟着这一行走，
-   宽度由小块自己的字间距（letter-spacing）调 */
-.textLayer span.rh-w {
-  position: static !important;
-  display: inline;                 /* 普通行内文字：宽度靠字间距调，不用 inline-block + transform（太费绘制） */
-  font-size: inherit !important;
-  font-family: rh-tight, sans-serif !important;
-  vertical-align: var(--rh-dy, 0);   /* 框上下居中在字身上（preciseText 按画布量出来写在整行上） */
-}
-/* 选中时的高亮框高度 = 字体的上伸 + 下伸。系统 sans-serif 大约是 1.15 个字号，比画出来的字高一截，
-   框上下都冒出来（标题行实测字形 14px 高、高亮 23px）。同一个字体把上伸 / 下伸压到正好 1 个字号，
-   高亮框就和 pdf.js 给这一行的框一样高，贴着字。字宽不变（横向对齐靠字间距，见 preciseText） */
-@font-face {
-  font-family: rh-tight;
-  src: local("Arial"), local("Helvetica"), local("Liberation Sans"), local("DejaVu Sans");
-  ascent-override: 80%;
-  descent-override: 20%;
-  line-gap-override: 0%;
-}
-/* 拆过的那一行，整行的横向拉伸固定成 1（每个小块自己拉伸）。
-   缩放时 pdf.js 会重新量整行的宽度、把 --scale-x 写回行内样式 —— 不压住的话整行又被拉伸一遍，
-   一缩放就全错开（实测 150% 时偏差最大 51px）。!important 的样式表规则压得住没加 !important 的行内样式 */
-.textLayer span.rh-split { --scale-x: 1 !important; }
-/* ↑ 别写成 span:has(> .rh-w)：:has() 让每次 DOM 变动都要把几千个 span 重新匹配一遍，
-   pdf.js 滚动时不停地增删页面，实测滚动从中位 25ms 一帧掉到 144ms 一帧（踩过） */
-
 /* 页面颜色（护眼模式，设置里选，见 lib/settings 的 PAPERS）。
    纸色：在画布上叠一层 multiply（正片叠底）—— 白 × 纸色 = 纸色，黑 × 纸色 = 黑，所以字还是原来的颜色，只有白底变了。
    这一层是 .canvasWrapper 的 ::after：在画布之上、文字层 / 高亮层之下，不挡选字，高亮也画在它上面不变色。
-   伪元素不会被 pdf.js 重建页面时删掉（它只删不认识的子节点）。
    夜间：画布反相（invert）再转半圈色相，深底浅字，图里的红蓝基本还是红蓝；反到 0.9 不到 1，底色是深灰不是纯黑，不刺眼 */
 .rh-paper-green { --rh-paper: #cce8cf; }
 .rh-paper-sepia { --rh-paper: #f4ecd8; }
@@ -78,9 +50,8 @@ body { font-family: theme("fontFamily.sans"); }
 .rh-paper-dark :is(.page .canvasWrapper, .rh-thumb) { filter: invert(0.9) hue-rotate(180deg); }
 /* 缩略图（左侧栏）跟着页面一起变色：同一层叠加 / 同一个反相 */
 
-/* 每一页自成一个层叠上下文。pdf.js 给每个链接注解一个递增的 z-index（链接多的页能到上百），
-   不隔离的话它们会跟页面外的浮层（文献卡片、编辑条、气泡，z-index 45 左右）比大小 ——
-   结果卡片画在上面、鼠标却点到底下的链接，悬停时 pdf.js 那层黄色还透到卡片上（踩过） */
+/* 每一页自成一个层叠上下文：页面里的层（链接、高亮、文字层）不跟页面外的浮层（文献卡片、编辑条、气泡，
+   z-index 45 左右）比大小 —— 不隔离的话卡片画在上面、鼠标却点到底下的链接（pdf.js 时代踩过） */
 .pdfViewer .page { isolation: isolate; }
 
 /* 区域框选模式：十字光标；文字层不让选（否则拖框时同时在划选文字） */

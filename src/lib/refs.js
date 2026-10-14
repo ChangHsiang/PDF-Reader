@@ -12,6 +12,8 @@
  *    都查不到也至少把原文显示出来。
  */
 
+import { tokenize } from "./pdfium/textLayer";
+
 const S2 = "https://api.semanticscholar.org/graph/v1/paper";
 const S2_FIELDS = "title,authors,year,venue,abstract,citationCount,externalIds,openAccessPdf,url,journal";
 const INSPIRE = "https://inspirehep.net/api/literature";
@@ -27,53 +29,47 @@ const getJson = async (url) => {
 /* ── 1. 从 PDF 里把参考文献表抠出来 ──────────────────────────────────── */
 
 /**
- * 返回 `{ byName: Map<destName, entry>, byLabel: Map<label, entry>, list }`，
- * entry = `{ name, label, text, page }`；label 是原文里印的编号（作者-年份制就是顺序号）。
- * 没有 `cite.*` 目标（不是 hyperref 生成的 PDF）就返回 null，调用方照常走 pdf.js 的跳转。
+ * 返回 `{ byName: Map<destName, entry>, byPos: Map<目标位置, entry>, byLabel: Map<label, entry>, list }`，
+ * entry = `{ name, dest, label, text, page }`（dest = 跳转目标 { pageIndex, x, y }）；label 是原文里印的编号（作者-年份制就是顺序号）。
+ * 没有 `cite.*` 目标（不是 hyperref 生成的 PDF）就返回 null，调用方照常跳转。
+ *
+ * PDFium 给链接的目标已经解析成「页码 + 坐标」，名字丢了；所以名字从文档的具名目标表里读（连同位置），
+ * 链接按位置（destKey）对回去。坐标下面统一换成「原点左下、y 向上」（PDF 用户坐标的习惯，切条的逻辑是按它写的）。
  *
  * 踩过的坑：
- * - `getDestinations()` 对有的 PDF 一个都枚举不出来（名字树分段 + 按需加载），所以名字从
- *   各页链接注解里收集，再逐个 `getDestination(name)` 解析 —— pdf.js 自己点链接也是这么查的
  * - `[1–3]` 只有 1 和 3 挂了链接，第 2 条**根本没有目标**。所以不能「一个目标一条」，
  *   要按原文里印的 `[n]` 切条，目标只用来定位参考文献表在哪、以及链接 → 第几条
  */
-export async function extractReferences(doc) {
-  const names = new Set();
-  try { Object.keys((await doc.getDestinations()) || {}).forEach(k => { if (k.startsWith("cite.")) names.add(k); }); } catch { /* 枚举不了就靠注解 */ }
-  for (let i = 1; i <= doc.numPages; i++) {
-    try {
-      (await (await doc.getPage(i)).getAnnotations()).forEach(an => {
-        if (typeof an.dest === "string" && an.dest.startsWith("cite.")) names.add(an.dest);
-      });
-    } catch { /* 单页坏了跳过 */ }
-  }
-  if (!names.size) return null;
+export const destKey = (pageIndex, x, y) => `${pageIndex}|${x == null ? "-" : Math.round(x)}|${y == null ? "-" : Math.round(y)}`;
 
-  // 目标 → (页, x, y)。XYZ 型目标是 [ref, {name:"XYZ"}, left, top, zoom]
-  const pos = [];
-  for (const name of names) {
-    try {
-      const d = await doc.getDestination(name);
-      if (!Array.isArray(d) || d[1]?.name !== "XYZ") continue;
-      const page = typeof d[0] === "number" ? d[0] + 1 : (await doc.getPageIndex(d[0])) + 1;
-      pos.push({ name, page, x: d[2] ?? 0, y: d[3] ?? 0 });
-    } catch { /* 坏目标跳过 */ }
-  }
+export async function extractReferences(doc) {
+  const dests = await doc.namedDests("cite.");
+  if (!dests.length) return null;
+
+  // 目标 → (页, x, y)，页面坐标（点）再翻成 y 向上
+  const pos = dests.filter(d => d.y != null).map(d => {
+    const H = doc.pages[d.pageIndex].size.height;
+    const p = doc.userToPage(d.pageIndex, d.x, d.y);
+    return { name: d.name, dest: { pageIndex: d.pageIndex, x: d.x, y: d.y }, key: destKey(d.pageIndex, d.x, d.y), page: d.pageIndex + 1, x: p.x, y: H - p.y };
+  });
   if (!pos.length) return null;
 
-  /* 参考文献表所在的页：第一个目标那页到最后一个目标那页（中间没被引用的条目所在页也算） */
+  /* 参考文献表所在的页：第一个目标那页到最后一个目标那页（中间没被引用的条目所在页也算）。
+     文字按词取（lib/pdfium/textLayer 的 tokenize），y 用词的基线 */
   const p0 = Math.min(...pos.map(p => p.page)), p1 = Math.max(...pos.map(p => p.page));
   const textOf = {};
   for (let n = p0; n <= p1; n++) {
-    const pg = await doc.getPage(n);
-    const vp = pg.getViewport({ scale: 1 });
-    const tc = await pg.getTextContent();
-    textOf[n] = {
-      width: vp.width,
+    const { width: W, height: H } = doc.pages[n - 1].size;
+    const items = [];
+    let sp = false;
+    for (const t of tokenize(await doc.text(n - 1))) {
+      if (t.t !== "w") { sp = true; continue; }
+      const y = H - t.b;
       // 页眉页脚（页码、期刊名）不要
-      items: tc.items.filter(it => it.str?.trim() && it.transform[5] > 40 && it.transform[5] < vp.height - 40)
-        .map(it => ({ str: it.str, x: it.transform[4], y: it.transform[5], w: it.width, h: it.height || 8 })),
-    };
+      if (y > 40 && y < H - 40) items.push({ str: t.text, x: t.x, y, w: t.w, h: t.h * 0.8, sp });
+      sp = false;
+    }
+    textOf[n] = { width: W, items };
   }
 
   /* 分栏：同一页上的目标 x 分成两簇就是双栏，分界取两簇中间；没有目标的页沿用上一页 */
@@ -106,7 +102,7 @@ export async function extractReferences(doc) {
         g.items.sort((a, b) => a.x - b.x);
         let text = "", right = null;
         for (const it of g.items) {
-          if (right !== null && it.x - right > 1.5 && !/\s$/.test(text) && !/^\s/.test(it.str)) text += " ";
+          if (right !== null && (it.sp || it.x - right > 1.5)) text += " ";
           text += it.str;
           right = it.x + it.w;
         }
@@ -156,14 +152,14 @@ export async function extractReferences(doc) {
   });
 
   // 链接 → 它所在的那一条（目标落在哪条的行区间里）
-  const byName = new Map();
+  const byName = new Map(), byPos = new Map();
   pos.forEach(p => {
     if (p.line < 0) return;
     let e = null;
     for (const x of list) { if (x.line <= p.line) e = x; else break; }
-    if (e) { byName.set(p.name, e); e.name ||= p.name; }
+    if (e) { byName.set(p.name, e); byPos.set(p.key, e); if (!e.name) { e.name = p.name; e.dest = p.dest; } }
   });
-  return { byName, byLabel: new Map(list.map(e => [e.label, e])), list };
+  return { byName, byPos, byLabel: new Map(list.map(e => [e.label, e])), list };
 }
 
 /** `[1–3, 7]` 这种组展开成编号数组；不是数字的（作者-年份制）返回 null */

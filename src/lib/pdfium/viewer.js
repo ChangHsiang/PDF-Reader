@@ -48,7 +48,8 @@ export class PdfiumDocument {
   /** 渲染整页或一块，返回 ImageBitmap（调用方用完要 close） */
   render(pageIndex, scale) { return this.pdf.render(this.docId, pageIndex, scale); }
   renderRect(pageIndex, scale, rect) { return this.pdf.renderRect(this.docId, pageIndex, scale, rect); }
-  geometry(pageIndex) { return this.pdf.geometry(this.docId, pageIndex); }
+  /** 具名目标（名字以 prefix 开头的），见 worker 的 namedDests */
+  namedDests(prefix) { return this.pdf.namedDests(this.docId, prefix); }
   /** 一页的字符（缓存）：{ codes, boxes, flags }，见 worker 的 text() */
   text(pageIndex) { return (this._text ||= new Map()).get(pageIndex) || this._text.set(pageIndex, this.pdf.text(this.docId, pageIndex).catch((e) => { this._text.delete(pageIndex); throw e; })).get(pageIndex); }
   /** PDF 用户坐标（原点左下，XYZ 跳转用的那种）→ 页面坐标（原点左上，点）。只处理不旋转的页 */

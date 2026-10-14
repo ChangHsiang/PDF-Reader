@@ -2,11 +2,12 @@
  * PDFium（WebAssembly）跑在这个 Worker 里：解析、渲染、取字形都不占主线程。
  * 主线程通过 lib/pdfium/client.js 发消息：{ id, op, args } → { id, ok, result | error }。
  *
- * wasm 从扩展自己的 dist/pdfium/pdfium.wasm 取（vite 构建时拷过去），不去 CDN：
+ * wasm 打包在扩展里（vite 当资源文件发出来，?url 拿到它的地址），不去 CDN：
  * 扩展页不该依赖外网才能打开 PDF，也省得多申请一个网站的权限。
  */
 import { init } from "@embedpdf/pdfium";
 import { PdfiumNative, createCdnFontConfig } from "@embedpdf/engines/pdfium";
+import wasmUrl from "@embedpdf/pdfium/pdfium.wasm?url";
 
 /* 没嵌入字体的中日韩文字：wasm 里的 PDFium 读不到电脑上装的字体，会画成空白（实测）。
    交给 embedpdf 的后备字体：PDFium 真用到某种文字时才从 jsDelivr 下对应的 Noto 字体（一个约 8MB），
@@ -34,12 +35,15 @@ const docs = new Map();             // docId → PdfDocumentObject
 
 async function boot() {
   if (native) return native;
-  const wasmBinary = await (await fetch(new URL("../pdfium/pdfium.wasm", self.location.href))).arrayBuffer();
+  const wasmBinary = await (await fetch(wasmUrl)).arrayBuffer();
   const mod = await init({ wasmBinary });
   const cfg = createCdnFontConfig(FONT_VERSION);
   native = new PdfiumNative(mod, { fontFallback: { ...cfg, fontLoader: (p) => loadFontSync(/^https?:/.test(p) ? p : (cfg.baseUrl || "") + p) } });
   return native;
 }
+
+/** PDFium 的导出函数：embedpdf 包装过的就用包装的，没包装的直接调 wasm 导出（参数全是数字 / 指针） */
+const fn = (name) => native.pdfiumModule[name] || native.pdfiumModule.pdfium["_" + name];
 
 const run = (task) => (task?.toPromise ? task.toPromise() : task);
 
@@ -113,8 +117,8 @@ const ops = {
     try {
       const tp = pc.getTextPage();
       const n = M.FPDFText_CountChars(tp);
-      const codes = new Uint32Array(n), boxes = new Float32Array(n * 4), flags = new Uint8Array(n);
-      const rect = mm.malloc(16), dev = mm.malloc(16);
+      const codes = new Uint32Array(n), boxes = new Float32Array(n * 4), flags = new Uint8Array(n), base = new Float32Array(n);
+      const rect = mm.malloc(16), dev = mm.malloc(16), org = mm.malloc(16);
       const S = 64, W = Math.round(page.size.width * S), H = Math.round(page.size.height * S);
       try {
         for (let i = 0; i < n; i++) {
@@ -125,6 +129,11 @@ const ops = {
           const l = P.getValue(rect, "float"), t = P.getValue(rect + 4, "float");
           const r = P.getValue(rect + 8, "float"), b = P.getValue(rect + 12, "float");
           if (l === r || t === b) continue;
+          // 基线（字的原点）：参考文献表按行切条要用，字框的下沿比基线低一截，分不清相邻两行
+          if (fn("FPDFText_GetCharOrigin")(tp, i, org, org + 8)) {
+            M.FPDF_PageToDevice(pc.pagePtr, 0, 0, W, H, 0, P.getValue(org, "double"), P.getValue(org + 8, "double"), dev, dev + 4);
+            base[i] = P.getValue(dev + 4, "i32") / S;
+          }
           M.FPDF_PageToDevice(pc.pagePtr, 0, 0, W, H, 0, l, t, dev, dev + 4);
           M.FPDF_PageToDevice(pc.pagePtr, 0, 0, W, H, 0, r, b, dev + 8, dev + 12);
           const x1 = P.getValue(dev, "i32") / S, y1 = P.getValue(dev + 4, "i32") / S;
@@ -132,17 +141,47 @@ const ops = {
           boxes[i * 4] = Math.min(x1, x2); boxes[i * 4 + 1] = Math.min(y1, y2);
           boxes[i * 4 + 2] = Math.abs(x2 - x1); boxes[i * 4 + 3] = Math.abs(y2 - y1);
         }
-      } finally { mm.free(rect); mm.free(dev); }
-      return { codes, boxes, flags, transfer: [codes.buffer, boxes.buffer, flags.buffer] };
+      } finally { mm.free(rect); mm.free(dev); mm.free(org); }
+      return { codes, boxes, flags, base, transfer: [codes.buffer, boxes.buffer, flags.buffer, base.buffer] };
     } finally { pc.release(); }
   },
-  async geometry({ docId, pageIndex }) {
+  /**
+   * 文档里的具名目标（LaTeX hyperref 的 cite.xxx 之类），只要名字以 prefix 开头的：
+   * [{ name, pageIndex, x, y }]（x / y 是 PDF 用户坐标，原点左下；没给的是 null）。
+   * 链接注解拿到的目标 PDFium 已经解析成页码 + 坐标、名字丢了，所以文献卡片靠这张表按位置把名字对回去
+   */
+  async namedDests({ docId, prefix = "" }) {
     const doc = docs.get(docId);
-    return run(native.getPageGeometry(doc, doc.pages[pageIndex]));
-  },
-  async glyphs({ docId, pageIndex }) {
-    const doc = docs.get(docId);
-    return run(native.getPageGlyphs(doc, doc.pages[pageIndex]));
+    const M = native.pdfiumModule, P = M.pdfium, mm = native.memoryManager;
+    const docPtr = native.cache.getContext(doc.id).docPtr;
+    const n = fn("FPDF_CountNamedDests")(docPtr);
+    const out = [];
+    const lenPtr = mm.malloc(4), flags = mm.malloc(12), xyz = mm.malloc(12);
+    try {
+      for (let i = 0; i < n; i++) {
+        P.setValue(lenPtr, 0, "i32");
+        fn("FPDF_GetNamedDest")(docPtr, i, 0, lenPtr);
+        const len = P.getValue(lenPtr, "i32");
+        if (len <= 2) continue;
+        const buf = mm.malloc(len);
+        let name = "", dest = 0;
+        try {
+          P.setValue(lenPtr, len, "i32");
+          dest = fn("FPDF_GetNamedDest")(docPtr, i, buf, lenPtr);
+          for (let k = 0; k + 1 < len; k += 2) { const c = P.getValue(buf + k, "i16") & 0xffff; if (!c) break; name += String.fromCharCode(c); }
+        } finally { mm.free(buf); }
+        if (!dest || !name.startsWith(prefix)) continue;
+        const pageIndex = M.FPDFDest_GetDestPageIndex(docPtr, dest);
+        if (pageIndex < 0) continue;
+        let x = null, y = null;
+        if (M.FPDFDest_GetLocationInPage(dest, flags, flags + 4, flags + 8, xyz, xyz + 4, xyz + 8)) {
+          if (P.getValue(flags, "i8")) x = P.getValue(xyz, "float");
+          if (P.getValue(flags + 4, "i8")) y = P.getValue(xyz + 4, "float");
+        }
+        out.push({ name, pageIndex, x, y });
+      }
+    } finally { mm.free(lenPtr); mm.free(flags); mm.free(xyz); }
+    return out;
   },
   /** 调试用：wasm 堆的大小（PDFium 自己的内存都在这里面） */
   async mem() { return { fontLog, wasmHeapMB: native ? Math.round(native.pdfiumModule?.pdfium?.HEAPU8?.length / 1048576 || native.pdfium?.HEAPU8?.length / 1048576 || 0) : 0, keys: native ? Object.keys(native).slice(0, 12) : [] }; },

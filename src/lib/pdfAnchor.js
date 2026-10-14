@@ -173,13 +173,18 @@ function contextAround(range) {
 
 /* ── 四期：跨版本重锚 ──────────────────────────────────────────────── */
 
-const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+/* 比对用的「宽松」形式：去掉所有空白、去掉重音、无点 ı → i、不分大小写。
+   标注可能是 pdf.js 时代（或网站上）存的，文字切法和现在的 PDFium 文字层不一样：
+   - pdf.js 把 LaTeX 的重音拆成两个字（「D´epartement」），PDFium 这边合成了「Département」
+   - 文字层的换行是 <br>，textContent 里没有空格，前后文跨行时两个词粘在一起
+   都去掉之后两边才对得上；整段几十个字的指纹，不会因此误配 */
+export const norm = (s) => (s || "").normalize("NFD").replace(/[\p{M}\s´`¨ˆ˜¸ˇ˘˚¯˙˝]/gu, "").replace(/ı/g, "i").toLowerCase();
 
 /**
  * 在**整篇文档的文字**里找回一条标注的位置。
  * 只在「标注做于另一个版本」时才走这条路 —— 同版本直接用坐标，别多花这个钱。
  *
- * `pageTexts`：`[{ page, text }]`，由 PdfViewer 用 `page.getTextContent()` 攒出来。
+ * `pageTexts`：`[{ page, text }]`，由 PdfViewer 从 PDFium 取每页的字符攒出来（已经 norm 过）。
  * 命中返回页码，没命中返回 null（调用方把它降级成页级笔记，并标「位置可能不准」）。
  *
  * 匹配顺序：**prefix+quote+suffix 整体** → 只有 quote。
@@ -189,7 +194,7 @@ const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
 export function reanchorByQuote(pageTexts, { quote, prefix, suffix, page }) {
   const q = norm(quote);
   if (!q) return null;
-  const withCtx = norm(`${prefix || ""} ${q} ${suffix || ""}`);
+  const withCtx = norm(`${prefix || ""}${quote}${suffix || ""}`);
 
   const tryFind = (needle) => {
     if (!needle) return null;
@@ -197,7 +202,7 @@ export function reanchorByQuote(pageTexts, { quote, prefix, suffix, page }) {
     const order = [...pageTexts].sort(
       (a, b) => Math.abs(a.page - page) - Math.abs(b.page - page));
     for (const p of order) {
-      if (norm(p.text).includes(needle)) return p.page;
+      if (p.text.includes(needle)) return p.page;
     }
     return null;
   };

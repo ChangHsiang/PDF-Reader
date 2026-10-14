@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
-  paperKeyFromUrl, anchorsFromSelection, reanchorByQuote, areaAnchor, pageCanvasBox, commentKeyOf,
+  paperKeyFromUrl, anchorsFromSelection, reanchorByQuote, norm as normQuote, areaAnchor, pageCanvasBox, commentKeyOf,
 } from "../lib/pdfAnchor";
 import {
   baseOf, loadMine, watchPaper, addAnnotation, updateAnnotation, deleteAnnotation, setVisibility,
@@ -20,9 +20,9 @@ import TranslatePop from "./TranslatePop";
 import SettingsDialog from "./SettingsDialog";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
-import { extractReferences, citeGroup } from "../lib/refs";
-import { trimSelection } from "../lib/preciseText";
+import { extractReferences, citeGroup, destKey } from "../lib/refs";
 import { createPdfium } from "../lib/pdfium/client";
+import { tokenize, trimSelection } from "../lib/pdfium/textLayer";
 import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
 import { Avatar, Icon } from "./bits";
 
@@ -306,7 +306,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
      就把整篇重新抽一遍，几十页的论文要白跑好几秒 */
   const pageTextsRef = useRef({ doc: null, job: null });
   useEffect(() => {
-    if (!doc || foreignIds.length === 0 || !doc.getPage) return;   // PDFium 版的取全文在第 3 步接上
+    if (!doc || foreignIds.length === 0) return;
     let alive = true;
     (async () => {
       if (pageTextsRef.current.doc !== doc) {
@@ -316,9 +316,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
             const out = [];
             for (let i = 1; i <= doc.numPages; i++) {
               try {
-                const p = await doc.getPage(i);
-                const tc = await p.getTextContent();
-                out.push({ page: i, text: tc.items.map(it => it.str).join(" ") });
+                // 和文字层同一份字符（lib/pdfium/textLayer 的 tokenize：连字符、重音都处理过）
+                const words = tokenize(await doc.text(i - 1)).filter(t => t.t === "w").map(t => t.text);
+                out.push({ page: i, text: normQuote(words.join(" ")) });
               } catch { /* 单页抽不出来就跳过 */ }
             }
             return out;
@@ -514,7 +514,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   }, []);
 
   /* ── 文献卡片：点正文里的引用号（hyperref 的 cite.* 链接）弹出，不再直接跳到文末 ──
-     捕获阶段拦截：pdf.js 自己在链接元素上挂了 onclick 跳转，祖先节点捕获阶段 stopPropagation
+     捕获阶段拦截：链接元素上自己挂了 onclick 跳转（lib/pdfium/viewer），祖先节点捕获阶段 stopPropagation
      就到不了它。参考文献表第一次点的时候才抽（要读几页文字），之后缓存 */
   const [refCard, setRefCard] = useState(null);      // { group, current, pos }
   const refsRef = useRef(null);
@@ -525,11 +525,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     if (!el || !doc) return;
     const onClick = async (e) => {
       const a = e.target?.closest?.(".annotationLayer a");
-      const href = a?.getAttribute("href") || "";
-      if (!href.startsWith("#")) return;
-      let name;
-      try { name = unescape(href.slice(1)); } catch { return; }
-      if (!name.startsWith("cite.")) return;
+      if (!a?.dataset.destPage) return;
+      const num = (v) => (v == null ? null : Number(v));
+      const dest = { pageIndex: Number(a.dataset.destPage), x: num(a.dataset.destX), y: num(a.dataset.destY) };
       e.preventDefault();
       e.stopPropagation();
       refsRef.current ||= extractReferences(doc).catch(() => null);
@@ -537,8 +535,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       el.style.cursor = "progress";
       const refs = await refsRef.current;
       el.style.cursor = "";
-      const entry = refs?.byName.get(name);
-      if (!entry) { apiRef.current?.linkService.goToDestination(name); return; }
+      // 不是指向参考文献的链接（章节、公式、图……）就照常跳转
+      const entry = refs?.byPos.get(destKey(dest.pageIndex, dest.x, dest.y));
+      if (!entry) { apiRef.current?.viewer.goToDest(dest); return; }
       let group = citeGroup(a, entry.label).filter(l => refs.byLabel.has(l));
       if (!group.includes(entry.label)) group = [entry.label];
       // 卡片放在链接下方（下面放不下就放上方），水平方向夹在可视区里
@@ -1543,7 +1542,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
                   onClose={closeRefCard}
                   onJump={(entry) => {
                     // [1–3] 里没挂链接的那条（比如 2）没有目标名，就跳到它所在的那一页
-                    if (entry.name) apiRef.current?.linkService.goToDestination(entry.name);
+                    if (entry.dest) apiRef.current?.viewer.goToDest(entry.dest);
                     else if (apiRef.current) apiRef.current.viewer.currentPageNumber = entry.page;
                     setRefCard(null);
                   }}
