@@ -22,6 +22,17 @@ body { font-family: theme("fontFamily.sans"); }
 .pdfViewer .canvasWrapper { position: absolute; inset: 0; overflow: hidden; }
 .pdfViewer .canvasWrapper canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
 .pdfViewer .annotationLayer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+/* 文字层（lib/pdfium/textLayer.js）：每个词一个 span，放在 PDF 里这个词的真实外框上；字透明，只用来选 */
+.pdfViewer .textLayer { position: absolute; left: 0; top: 0; overflow: clip; z-index: 0; text-align: initial; forced-color-adjust: none;
+  transform-origin: 0 0; transform: scale(calc(var(--scale-factor) / 1.3333333)); }
+.pdfViewer .textLayer span, .pdfViewer .textLayer br { position: absolute; white-space: pre; color: transparent; cursor: text; transform-origin: 0 0; }
+.pdfViewer .textLayer span { font-family: Arial, sans-serif; line-height: inherit; }
+.pdfViewer .textLayer ::selection { background: rgba(0, 100, 255, 0.25); }
+.pdfViewer .textLayer br::selection { background: transparent; }
+/* 搜索命中（lib/pdfium/find.js）：所有命中淡黄，当前这一处深一点 */
+.pdfViewer .rh-find { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.pdfViewer .rh-find .highlight { position: absolute; background: rgba(255, 200, 0, 0.35); border-radius: 2px; }
+.pdfViewer .rh-find .highlight.selected { background: rgba(255, 120, 0, 0.5); }
 .pdfViewer .annotationLayer .linkAnnotation { position: absolute; }
 .pdfViewer .annotationLayer .linkAnnotation > a { position: absolute; inset: 0; pointer-events: auto; cursor: pointer; }
 

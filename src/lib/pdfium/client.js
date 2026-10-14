@@ -23,6 +23,7 @@ export function createPdfium() {
     renderRect: (docId, pageIndex, scale, rect) => call("renderRect", { docId, pageIndex, scale, rect }),
     outline: (docId) => call("outline", { docId }),
     links: (docId, pageIndex) => call("links", { docId, pageIndex }),
+    text: (docId, pageIndex) => call("text", { docId, pageIndex }),
     geometry: (docId, pageIndex) => call("geometry", { docId, pageIndex }),
     glyphs: (docId, pageIndex) => call("glyphs", { docId, pageIndex }),
     close: (docId) => call("close", { docId }),

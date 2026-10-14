@@ -97,6 +97,45 @@ const ops = {
       x: a.rect.origin.x, y: a.rect.origin.y, w: a.rect.size.width, h: a.rect.size.height, ...targetOf(a.target),
     })).filter(l => l.dest || l.url);
   },
+  /**
+   * 一页的全部字符：Unicode、外框、标记。文字层（选字）和搜索都用它。
+   * 不用 embedpdf 现成的 getPageGlyphs：它每个字 malloc / free 九次，而且把坐标取整到「点」
+   * （FPDF_PageToDevice 出来是整数）—— 1 点 = 1.33px，放大到 500% 就差 6~7px。
+   * 这里把设备坐标放大 64 倍再除回来，保留小数；一页只申请一次内存。
+   * 返回：codes（Uint32，每个字符的 Unicode）、boxes（Float32 x,y,w,h，单位点、原点左上、按显示方向；
+   * 没框的字符全是 0）、flags（1 = PDFium 补出来的空格 / 换行，2 = 行尾连字符）
+   */
+  async text({ docId, pageIndex }) {
+    const doc = docs.get(docId);
+    const page = doc.pages[pageIndex];
+    const M = native.pdfiumModule, P = M.pdfium, mm = native.memoryManager;
+    const pc = native.cache.getContext(doc.id).acquirePage(pageIndex);
+    try {
+      const tp = pc.getTextPage();
+      const n = M.FPDFText_CountChars(tp);
+      const codes = new Uint32Array(n), boxes = new Float32Array(n * 4), flags = new Uint8Array(n);
+      const rect = mm.malloc(16), dev = mm.malloc(16);
+      const S = 64, W = Math.round(page.size.width * S), H = Math.round(page.size.height * S);
+      try {
+        for (let i = 0; i < n; i++) {
+          codes[i] = M.FPDFText_GetUnicode(tp, i);
+          if (M.FPDFText_IsGenerated(tp, i)) flags[i] |= 1;
+          if (M.FPDFText_IsHyphen(tp, i)) flags[i] |= 2;
+          if (!M.FPDFText_GetLooseCharBox(tp, i, rect)) continue;
+          const l = P.getValue(rect, "float"), t = P.getValue(rect + 4, "float");
+          const r = P.getValue(rect + 8, "float"), b = P.getValue(rect + 12, "float");
+          if (l === r || t === b) continue;
+          M.FPDF_PageToDevice(pc.pagePtr, 0, 0, W, H, 0, l, t, dev, dev + 4);
+          M.FPDF_PageToDevice(pc.pagePtr, 0, 0, W, H, 0, r, b, dev + 8, dev + 12);
+          const x1 = P.getValue(dev, "i32") / S, y1 = P.getValue(dev + 4, "i32") / S;
+          const x2 = P.getValue(dev + 8, "i32") / S, y2 = P.getValue(dev + 12, "i32") / S;
+          boxes[i * 4] = Math.min(x1, x2); boxes[i * 4 + 1] = Math.min(y1, y2);
+          boxes[i * 4 + 2] = Math.abs(x2 - x1); boxes[i * 4 + 3] = Math.abs(y2 - y1);
+        }
+      } finally { mm.free(rect); mm.free(dev); }
+      return { codes, boxes, flags, transfer: [codes.buffer, boxes.buffer, flags.buffer] };
+    } finally { pc.release(); }
+  },
   async geometry({ docId, pageIndex }) {
     const doc = docs.get(docId);
     return run(native.getPageGeometry(doc, doc.pages[pageIndex]));

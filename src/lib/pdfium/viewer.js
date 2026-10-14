@@ -18,6 +18,9 @@
  *   CSS 像素 = 点 × 96/72 × 缩放，和 pdf.js 一致（标注存的比例坐标两边通用，第 1 步验证过）
  */
 
+import { buildTextLayer, installSelectionHelper } from "./textLayer";
+import { PdfiumFind } from "./find";
+
 export const PT2PX = 96 / 72;
 const MAX_PIXELS = 16 * 1024 * 1024;     // 整页画布的像素上限（超过就改用打底 + 细节画布）
 const RENDER_MARGIN = 0.5;               // 视口上下各多渲染半屏
@@ -46,6 +49,8 @@ export class PdfiumDocument {
   render(pageIndex, scale) { return this.pdf.render(this.docId, pageIndex, scale); }
   renderRect(pageIndex, scale, rect) { return this.pdf.renderRect(this.docId, pageIndex, scale, rect); }
   geometry(pageIndex) { return this.pdf.geometry(this.docId, pageIndex); }
+  /** 一页的字符（缓存）：{ codes, boxes, flags }，见 worker 的 text() */
+  text(pageIndex) { return (this._text ||= new Map()).get(pageIndex) || this._text.set(pageIndex, this.pdf.text(this.docId, pageIndex).catch((e) => { this._text.delete(pageIndex); throw e; })).get(pageIndex); }
   /** PDF 用户坐标（原点左下，XYZ 跳转用的那种）→ 页面坐标（原点左上，点）。只处理不旋转的页 */
   userToPage(pageIndex, x, y) {
     const p = this.pages[pageIndex];
@@ -68,8 +73,14 @@ export class PdfiumViewer {
     this._raf = 0;
     this._detailTimer = 0;
     this._busy = false;                  // Worker 一次只排一个渲染，近的先画
-    this._onScroll = () => { this._raf ||= requestAnimationFrame(() => { this._raf = 0; this.update(); }); };
+    this._lastScroll = 0;
+    this._onScroll = () => {
+      this._lastScroll = performance.now();
+      this._raf ||= requestAnimationFrame(() => { this._raf = 0; this.update(); });
+    };
     container.addEventListener("scroll", this._onScroll, { passive: true });
+    this._unselect = installSelectionHelper(container);
+    this.find = new PdfiumFind(this, eventBus);
   }
 
   get pagesCount() { return this.views.length; }
@@ -85,6 +96,8 @@ export class PdfiumViewer {
     this.views.forEach(v => v.canvas && (v.canvas.width = 0));
     this.views = [];
     this.doc = doc;
+    this.find?.clear();
+    if (this.find) this.find.texts = null;
     if (!doc) return;
     this.views = doc.pages.map((p, i) => {
       const div = document.createElement("div");
@@ -230,6 +243,7 @@ export class PdfiumViewer {
         v.renderedScale = scale;
         v.renderingState = 3;
         if (!v.links) this._renderLinks(v);
+        this._wantText(v);
         this.eventBus.dispatch("pagerendered", { source: this, pageNumber: v.id });
         // 打底是低分辨率的：细节画布要等打底画完才补（滚动触发的那一次可能来得太早，打底还没画好）
         if (v.lowRes) { clearTimeout(this._detailTimer); this._detailTimer = setTimeout(() => this._pumpDetail(), 60); }
@@ -277,6 +291,55 @@ export class PdfiumViewer {
     }
   }
 
+  /**
+   * 文字层（lib/pdfium/textLayer.js）。每页只建一次（坐标是 100% 下的固定像素，整层一个 transform 跟着缩放）。
+   * **滚动停下来之后、在空闲时分批建**：一页一千个词第一次排版要一两百毫秒（浏览器要逐个词排字），
+   * 放在滚动途中就是一卡一卡的（实测最长的一帧 350~500ms）。文字层只在选字时有用，滚动时用不上：
+   * - 页面画好时只向 Worker 要这一页的字符数据（不占主线程）
+   * - 滚动停了 200ms 之后，空闲时一批 150 个节点往里放（按阅读顺序，选区不受影响），放完发 textlayerrendered
+   */
+  _wantText(v) {
+    if (v.textData || v.textAsked) return;
+    v.textAsked = true;
+    this.doc.text(v.index).then((d) => { v.textData = d; this._scheduleText(); })
+      .catch((e) => { console.error("[pdfium] text", v.index, e); v.textAsked = false; });
+  }
+
+  _scheduleText() {
+    if (this._textTimer) return;
+    const wait = Math.max(0, 200 - (performance.now() - this._lastScroll));
+    this._textTimer = setTimeout(() => {
+      this._textTimer = 0;
+      if (performance.now() - this._lastScroll < 200) { this._scheduleText(); return; }
+      const ric = window.requestIdleCallback || ((f) => setTimeout(() => f({ timeRemaining: () => 8 }), 16));
+      ric((dl) => this._pumpText(dl), { timeout: 600 });
+    }, wait);
+  }
+
+  _pumpText(deadline) {
+    if (performance.now() - this._lastScroll < 200) { this._scheduleText(); return; }
+    const mid = this.container.scrollTop + this.container.clientHeight / 2;
+    const todo = this.views.filter(v => v.near && v.textData && v.text !== "done")
+      .sort((a, b) => Math.abs(a.div.offsetTop + a.div.offsetHeight / 2 - mid) - Math.abs(b.div.offsetTop + b.div.offsetHeight / 2 - mid));
+    for (const v of todo) {
+      if (!v.textNodes) {
+        const { layer, nodes } = buildTextLayer(v.textData, v.size);
+        v.wrap.after(layer);              // 画布之上、链接层和高亮层之下
+        v.textLayer = layer;
+        v.textNodes = nodes;
+      }
+      while (v.textNodes.length && deadline.timeRemaining() > 4) {
+        v.textLayer.append(...v.textNodes.splice(0, 150));
+      }
+      if (v.textNodes.length) break;     // 这一轮的时间用完了
+      v.text = "done";
+      v.textNodes = null;
+      this.eventBus.dispatch("textlayerrendered", { source: this, pageNumber: v.id });
+      if (deadline.timeRemaining() <= 4) break;
+    }
+    if (this.views.some(v => v.near && v.textData && v.text !== "done")) this._scheduleText();
+  }
+
   /** 链接层：结构照 pdf.js（section.linkAnnotation > a），点内部链接跳转、外部链接新标签页打开。
       不画悬停黄框（PDF 里的链接矩形本来就不贴字，画出来像是偏了；Edge 也不画） */
   async _renderLinks(v) {
@@ -309,8 +372,11 @@ export class PdfiumViewer {
 
   destroy() {
     this.container.removeEventListener("scroll", this._onScroll);
+    this._unselect?.();
+    this.find?.destroy();
     cancelAnimationFrame(this._raf);
     clearTimeout(this._detailTimer);
+    clearTimeout(this._textTimer);
     this.setDocument(null);
   }
 }
