@@ -1323,6 +1323,75 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
   };
+
+  /* ── 链接预览（同 Zotero）：指在正文的内部链接上停一下，浮出目标的预览 ──
+     - 引用号：参考文献原文（[1–10] 这种按整组展开，指 1 或 10 都出全部十条）
+     - 其他（章节、公式、图、脚注）：目标那一页的图，滚到目标位置，预览框里还能接着滚
+     两栏都有（事件挂在分屏外面那一层）。移进预览框不消失，方便滚动 / 复制 */
+  const [linkPv, setLinkPv] = useState(null);       // { kind: "refs" | "page", rect, entries | dest }
+  const pvHideRef = useRef(0);
+  const pvHide = useCallback((ms = 220) => {
+    clearTimeout(pvHideRef.current);
+    pvHideRef.current = setTimeout(() => setLinkPv(null), ms);
+  }, []);
+  useEffect(() => {
+    const root = splitRowRef.current;
+    setLinkPv(null);
+    if (!root || !doc) return;
+    let timer = 0, cur = null;
+    const linkOf = (t) => t?.closest?.(".annotationLayer a[data-dest-page]");
+    const show = async (a) => {
+      const num = (v) => (v == null ? null : Number(v));
+      const dest = { pageIndex: Number(a.dataset.destPage), x: num(a.dataset.destX), y: num(a.dataset.destY) };
+      refsRef.current ||= extractReferences(doc).catch(() => null);
+      const refs = await refsRef.current;
+      if (cur !== a || !a.isConnected) return;
+      const rect = a.getBoundingClientRect();
+      const entry = refs?.byPos.get(destKey(dest.pageIndex, dest.x, dest.y));
+      if (entry) {
+        let group = citeGroup(a, entry.label).filter(l => refs.byLabel.has(l));
+        if (!group.includes(entry.label)) group = [entry.label];
+        setLinkPv({ kind: "refs", rect, entries: group.map(l => refs.byLabel.get(l)) });
+      } else {
+        // 预览按正文当前的缩放画（字和正在读的一样大）：量链接所在这一页画布的 CSS 宽度 / 点宽
+        const pg = a.closest(".page");
+        const k = pg.querySelector(".canvasWrapper").getBoundingClientRect().width / doc.pages[Number(pg.dataset.pageNumber) - 1].size.width;
+        setLinkPv({ kind: "page", rect, dest, k });
+      }
+    };
+    const over = (e) => {
+      const a = linkOf(e.target);
+      if (!a) return;
+      clearTimeout(pvHideRef.current);
+      if (a === cur || e.buttons) return;
+      cur = a;
+      clearTimeout(timer);
+      timer = setTimeout(() => show(a), 350);
+    };
+    const out = (e) => {
+      const a = linkOf(e.target);
+      if (!a || (e.relatedTarget && a.contains(e.relatedTarget))) return;
+      clearTimeout(timer);
+      cur = null;
+      pvHide();
+    };
+    // 点了（弹文献卡片 / 跳转）、滚动、按键：预览收起
+    const close = () => { clearTimeout(timer); cur = null; clearTimeout(pvHideRef.current); setLinkPv(null); };
+    root.addEventListener("pointerover", over);
+    root.addEventListener("pointerout", out);
+    root.addEventListener("pointerdown", close, true);
+    root.addEventListener("wheel", close, { passive: true });
+    window.addEventListener("keydown", close);
+    return () => {
+      clearTimeout(timer);
+      root.removeEventListener("pointerover", over);
+      root.removeEventListener("pointerout", out);
+      root.removeEventListener("pointerdown", close, true);
+      root.removeEventListener("wheel", close);
+      window.removeEventListener("keydown", close);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc]);
   const enterFullscreen = () => { readerRef.current?.requestFullscreen?.().catch(() => {}); };
 
   /* ── 浮动标注工具条：能拖、能横竖切换，位置和方向记在本机 ──
@@ -1614,6 +1683,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
                   onCommit={(rect, pageEl) => commitAreaRect(editArea, rect, pageEl)} />
               )}
               {annMenuView}
+              {linkPv && (
+                <LinkPreview pv={linkPv} doc={doc} onEnter={() => clearTimeout(pvHideRef.current)} onLeave={() => pvHide()} />
+              )}
               {refCard && (
                 <RefCard key={`${refCard.group.join(",")}@${refCard.current}`} {...refCard}
                   arxivBase={base.replace(/^arxiv:/, "")}
@@ -1953,6 +2025,64 @@ function SplitPane({ doc, main, apiRef, annotations, arxivId, eqCopy, onReady, o
     <div className="relative h-full bg-[#525659]">
       <div ref={containerRef} className="absolute inset-0 overflow-auto overscroll-contain thin-scrollbar">
         <div ref={viewerElRef} className="pdfViewer relative" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 链接预览浮框（见 PdfViewer 里的「链接预览」）。fixed 定位：放在链接下方，下面放不下就放上方，左右夹在窗口里。
+ * 引用号是一张文字卡（每条参考文献的原文）；别的链接是目标那一页的图（按预览框宽度渲染整页，滚到目标位置）。
+ * 页面图挂 rh-thumb：护眼模式 / 夜间的颜色和缩略图一样跟着变。
+ */
+function LinkPreview({ pv, doc, onEnter, onLeave }) {
+  // 页面图：和正文一样大（最宽 900、不超出窗口），高度约半屏；文字卡固定宽、最大高度 300
+  const W = pv.kind === "page" ? Math.round(Math.min(doc.pages[pv.dest.pageIndex].size.width * pv.k, 900, window.innerWidth - 16)) : 460;
+  const H = pv.kind === "page" ? Math.round(Math.min(420, window.innerHeight * 0.45)) : 300;
+  const r = pv.rect;
+  const below = window.innerHeight - r.bottom >= H + 14 || r.top < H + 14;
+  const left = Math.max(8, Math.min(r.left + r.width / 2 - W / 2, window.innerWidth - W - 8));
+  const pos = below ? { top: Math.min(r.bottom + 6, window.innerHeight - H - 8) } : { bottom: window.innerHeight - r.top + 6 };
+  return (
+    <div className="fixed z-[70] rounded-lg bg-[#fff] border border-[#0000002e] shadow-[0_8px_28px_rgba(0,0,0,0.35)] overflow-hidden animate-fade-in"
+      style={{ left, width: W, ...pos }} onPointerEnter={onEnter} onPointerLeave={onLeave}>
+      {pv.kind === "page"
+        ? <PagePreview doc={doc} dest={pv.dest} width={W} height={H} />
+        : (
+          <div className="overflow-y-auto rh-light-scroll px-3.5 py-2.5 flex flex-col gap-2 text-[13px] leading-[1.5] text-[#222] font-sans"
+            style={{ maxHeight: H }}>
+            {pv.entries.map(e => <div key={e.label}>{/^\s*\[/.test(e.text) ? e.text : `[${e.label}] ${e.text}`}</div>)}
+          </div>
+        )}
+    </div>
+  );
+}
+
+function PagePreview({ doc, dest, width, height }) {
+  const boxRef = useRef(null);
+  const canvasRef = useRef(null);
+  const page = doc.pages[dest.pageIndex];
+  const k = width / page.size.width;                 // CSS 像素 / 点
+  useEffect(() => {
+    let alive = true;
+    const dpr = window.devicePixelRatio || 1;
+    doc.render(dest.pageIndex, k * dpr).then(({ bitmap, width: bw, height: bh }) => {
+      const c = canvasRef.current;
+      if (!alive || !c) { bitmap.close(); return; }
+      c.width = bw; c.height = bh;
+      c.getContext("2d").drawImage(bitmap, 0, 0);
+      bitmap.close();
+    }).catch(() => {});
+    // 目标位置放在预览框靠上一点（留一行上文）；只给了页码的跳到页首
+    const y = dest.y == null ? 0 : doc.userToPage(dest.pageIndex, dest.x, dest.y).y;
+    if (boxRef.current) boxRef.current.scrollTop = Math.max(0, y * k - 16);
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, dest.pageIndex, dest.y, width]);
+  return (
+    <div ref={boxRef} className="overflow-y-auto overflow-x-hidden rh-light-scroll" style={{ height }}>
+      <div className="rh-thumb relative bg-[#fff]" style={{ width, height: page.size.height * k }}>
+        <canvas ref={canvasRef} className="block w-full h-full" />
       </div>
     </div>
   );

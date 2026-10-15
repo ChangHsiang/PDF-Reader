@@ -95,6 +95,8 @@ body { font-family: theme("fontFamily.sans"); }
 }
 
 .thin-scrollbar { scrollbar-width: thin; scrollbar-color: #ffffff40 transparent; }
+/* 白底浮框（链接预览）里的细滚动条 */
+.rh-light-scroll { scrollbar-width: thin; scrollbar-color: #00000040 transparent; }
 
 .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .line-clamp-4 { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
