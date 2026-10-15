@@ -133,9 +133,10 @@ export default function SettingsDialog({ onClose }) {
   return createPortal(
     <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4 animate-fade-in font-sans"
       onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-[480px] max-h-[90vh] overflow-y-auto thin-scrollbar rounded-xl bg-[#323639]
+      {/* 标题栏固定在上面，只有下面的内容滚动 */}
+      <div className="w-full max-w-[480px] max-h-[90vh] flex flex-col overflow-hidden rounded-xl bg-[#323639]
                       border border-[#ffffff26] shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
-        <div className="relative h-12 flex items-center justify-center border-b border-[#00000040]">
+        <div className="relative h-12 shrink-0 flex items-center justify-center border-b border-[#00000040]">
           <span className="text-[14.5px] text-[#fff] font-bold">设置</span>
           <button onClick={onClose} title="关闭（Esc）"
             className="absolute right-2 w-8 h-8 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer text-[#c8c8c8] hover:bg-[#ffffff1a]">
@@ -143,7 +144,7 @@ export default function SettingsDialog({ onClose }) {
           </button>
         </div>
 
-        <div className="px-5 py-2">
+        <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar px-5 py-2">
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-2">阅读</div>
           <Row title="打开 arXiv PDF 时用笔记阅读器" desc="关掉后 arXiv 的 PDF 用浏览器自带的阅读器打开">
             <Switch on={s.intercept} onClick={() => setSettings({ intercept: !s.intercept })} />
