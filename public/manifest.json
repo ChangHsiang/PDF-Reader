@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PDF-Reader",
   "short_name": "PDF-Reader",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "arXiv PDF 笔记阅读器：高亮、框选、画笔、批注，引用文献卡片，公式复制 LaTeX，划词翻译；可登录 ResearchHub 同步笔记。",
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
   "action": { "default_popup": "popup.html", "default_icon": { "16": "icons/16.png", "32": "icons/32.png" } },
