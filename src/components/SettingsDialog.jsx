@@ -227,6 +227,16 @@ export default function SettingsDialog({ onClose }) {
             </div>
           )}
 
+          <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">同步</div>
+          <Row title="arXiv 论文的笔记" desc="登录 ResearchHub 后和网站同步。自动：打开论文、改完笔记就同步；手动：点顶栏的同步按钮才同步">
+            <Dropdown value={s.syncArxiv || "auto"} onChange={v => setSettings({ syncArxiv: v })}
+              options={[["auto", "自动同步"], ["manual", "手动同步"]]} />
+          </Row>
+          <Row title="本地文件的笔记" desc="本地文件可能是没发表的稿子，默认手动。同步只传笔记，不传 PDF；默认只有自己看得到">
+            <Dropdown value={s.syncLocal || "manual"} onChange={v => setSettings({ syncLocal: v })}
+              options={[["auto", "自动同步"], ["manual", "手动同步"]]} />
+          </Row>
+
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">数据</div>
           <DataSection btn={btn} />
 

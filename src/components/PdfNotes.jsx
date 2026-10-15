@@ -540,12 +540,13 @@ export const kindOf = (a) => (a.kind === "area" || a.kind === "underline" || a.k
 
 const KIND_FILTERS = [["highlight", "高亮"], ["underline", "下划线"], ["area", "区域"], ["ink", "手写"], ["text", "文本"], ["note", "附注"], ["page", "整页"]];
 
-function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, active, onTag, tagOn }) {
+function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, active, onTag, tagOn,
+                  shared, onShareExcluded, hidden, onHide }) {
   const k = kindOf(a);
   return (
     <div onClick={() => onGo(a)}
       className={`group px-2 py-1.5 rounded-md cursor-pointer transition-colors
-        ${active ? "bg-[#ffffff26]" : "hover:bg-[#ffffff14]"}`}>
+        ${active ? "bg-[#ffffff26]" : "hover:bg-[#ffffff14]"} ${hidden ? "opacity-45" : ""}`}>
       <div className="flex items-center gap-1.5 mb-0.5">
         {/* 颜色点的形状跟着类型走：高亮实心圆、下划线一道杠、区域空心方框 —— 不看字也分得出 */}
         {k === "underline" ? (
@@ -569,6 +570,10 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
           <span className="text-[10px] text-[#ffcf7a] font-sans px-1 rounded bg-[#ffcf7a1a] shrink-0"
             title="这条标注做于论文的其它版本，位置可能不准">位置可能不准</span>
         )}
+        {/* 整份分享了、但这条不分享：一直标出来（不然很容易忘了哪几条没给别人看） */}
+        {mine && shared && a.share_excluded && (
+          <span className="text-[10px] text-[#b8b8b8] font-sans px-1 rounded bg-[#ffffff1a] shrink-0" title="整份笔记已分享，这一条不分享">不分享</span>
+        )}
         <div className="flex-1 min-w-0" />
         {mine ? (
           /* 编辑 / 删除：图标按钮（原来是「改」「删」两个字，像随手写的批注，不像按钮）。
@@ -580,9 +585,27 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"
                 strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
             </button>
+            {/* 二级分享：整份分享时这一条要不要给别人看。整份没分享时不出这颗（本来就谁都看不到） */}
+            {shared && (
+              <button onClick={e => { e.stopPropagation(); onShareExcluded?.(a, !a.share_excluded); }}
+                title={a.share_excluded ? "这一条现在不分享，点一下分享" : "这一条会分享给别人，点一下不分享"}
+                aria-label={a.share_excluded ? "分享这一条" : "不分享这一条"}
+                className="w-6 h-6 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer
+                           text-[#b8b8b8] hover:text-[#fff] hover:bg-[#ffffff1f]">
+                <EyeIcon off={!a.share_excluded} />
+              </button>
+            )}
             <DeleteButton onConfirm={() => onDelete(a)} title="删除" size={24} icon={13} round />
           </span>
         ) : (
+          <span className="flex items-center gap-1 shrink-0">
+          {/* 他人的：隐藏这一条（只影响自己看到的） */}
+          <button onClick={e => { e.stopPropagation(); onHide?.(a, !hidden); }}
+            title={hidden ? "取消隐藏" : "隐藏这一条（只是自己不看，不影响对方）"}
+            className={`${hidden ? "flex" : "hidden group-hover:flex"} w-6 h-6 -my-1 rounded-full items-center justify-center bg-transparent border-none cursor-pointer
+                       text-[#b8b8b8] hover:text-[#fff] hover:bg-[#ffffff1f]`}>
+            <EyeIcon off={!hidden} />
+          </button>
           <button onClick={e => { e.stopPropagation(); onCopy(a); }} disabled={copied}
             title={copied ? "已在我的笔记里" : "加进我的笔记"}
             className={`text-[10.5px] px-1.5 rounded border-none shrink-0
@@ -590,6 +613,7 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
                        : "text-[#e6e6e6] bg-[#ffffff1a] cursor-pointer hover:bg-[#ffffff33]"}`}>
             {copied ? "✓ 已添加" : "+ 收藏"}
           </button>
+          </span>
         )}
       </div>
       {k === "ink" ? (
@@ -642,6 +666,14 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
   );
 }
 
+/** 眼睛图标：off = 画一道斜杠（点了会变成「不分享 / 隐藏」）。按钮上画的是「点了之后的样子」 */
+const EyeIcon = ({ off }) => (
+  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
+    {off && <line x1="4" y1="20" x2="20" y2="4" />}
+  </svg>
+);
+
 /** 按页 → 页内从上到下排（页级笔记排在那一页最前面）。新加的标注不会再堆在列表末尾 */
 const byPosition = (a, b) =>
   a.page - b.page || (a.rects?.[0]?.y ?? -1) - (b.rects?.[0]?.y ?? -1);
@@ -668,10 +700,15 @@ const toggleIn = (set, v) => {
 export function NotesList({
   mine, others, copiedIds, scope, setScope, onGo, onEdit, onDelete, onCopy,
   onAddPageNote, visibility, onVisibility, onExport, exported, page, canShare, doc, activeId,
+  onShareExcluded, hiddenOthers = new Set(), onHideOther,
 }) {
   const showMine = scope === "mine" || scope === "all";
   const showOthers = scope === "others" || scope === "all";
-  const otherCount = others.reduce((s, o) => s + o.annotations.length, 0);
+  /* 他人里隐藏掉的：默认收起，点「显示」再列出来（灰着，可以取消隐藏） */
+  const [showHidden, setShowHidden] = useState(false);
+  const hiddenCount = others.reduce((s, o) => s + o.annotations.filter(a => hiddenOthers.has(a.id)).length, 0);
+  const otherCount = others.reduce((s, o) => s + o.annotations.length, 0) - hiddenCount;
+  const shared = canShare && visibility === "public";
 
   const [q, setQ] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -697,7 +734,7 @@ export function NotesList({
 
   const mineShown = showMine ? mine.filter(a => pass(a)).sort(byPosition) : [];
   const othersShown = showOthers
-    ? others.flatMap(o => o.annotations.filter(a => pass(a, o.author)).map(a => ({ a, author: o.author })))
+    ? others.flatMap(o => o.annotations.filter(a => (showHidden || !hiddenOthers.has(a.id)) && pass(a, o.author)).map(a => ({ a, author: o.author })))
         .sort((x, y) => byPosition(x.a, y.a))
     : [];
   const totalInScope = (showMine ? mine.length : 0) + (showOthers ? otherCount : 0);
@@ -818,7 +855,8 @@ export function NotesList({
       <div className="flex-1 overflow-y-auto overscroll-contain thin-scrollbar px-1 py-1">
         {mineShown.map(a => (
           <AnnRow key={a.id} a={a} mine doc={doc} active={a.id === activeId}
-            onGo={onGo} onEdit={onEdit} onDelete={onDelete} onTag={onTag} tagOn={tagOn} />
+            onGo={onGo} onEdit={onEdit} onDelete={onDelete} onTag={onTag} tagOn={tagOn}
+            shared={shared} onShareExcluded={onShareExcluded} />
         ))}
         {mineShown.length > 0 && othersShown.length > 0 && (
           <div className="mx-2 my-1.5 border-t border-[#ffffff1a]" />
@@ -826,8 +864,18 @@ export function NotesList({
         {othersShown.map(({ a, author }) => (
           <AnnRow key={a.id} a={a} author={author} doc={doc} active={a.id === activeId}
             onGo={onGo} onCopy={onCopy} onTag={onTag} tagOn={tagOn}
-            copied={copiedIds.has(a.source_annotation_id || a.id)} />
+            copied={copiedIds.has(a.source_annotation_id || a.id)}
+            hidden={hiddenOthers.has(a.id)} onHide={onHideOther} />
         ))}
+        {showOthers && hiddenCount > 0 && (
+          <div className="flex items-center justify-between mx-2 mt-1 text-[10.5px] font-sans text-[#9a9a9a]">
+            <span>已隐藏他人的 {hiddenCount} 条</span>
+            <button onClick={() => setShowHidden(v => !v)}
+              className="px-1 rounded text-[10.5px] text-[#7ec8e3] bg-transparent border-none cursor-pointer hover:bg-[#ffffff14]">
+              {showHidden ? "收起" : "显示"}
+            </button>
+          </div>
+        )}
         {shown === 0 && (
           <div className="px-2 py-4 text-[11.5px] text-[#b8b8b8] font-sans leading-relaxed">
             {active && totalInScope > 0

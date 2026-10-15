@@ -5,7 +5,8 @@ import {
 } from "../lib/pdfAnchor";
 import {
   baseOf, loadMine, watchPaper, addAnnotation, updateAnnotation, deleteAnnotation, setVisibility,
-  copyAnnotation, copiedSourceIds, syncPaper, fetchOthers, exportMarkdown, normTags,
+  copyAnnotation, copiedSourceIds, syncPaper, fetchOthers, exportMarkdown, normTags, isLocalKey,
+  setShareExcluded, loadHiddenOthers, setHiddenOther,
 } from "../lib/notes";
 import { countComments } from "../lib/comments";
 import { sitePaperUrl } from "../lib/config";
@@ -130,7 +131,7 @@ function OutlineNode({ node, depth, onGo, defaultOpen = false }) {
 }
 
 /* 同步状态：一眼看出笔记现在在哪 —— 只在本机 / 已上云 / 有没推上去的 */
-function SyncBadge({ uid, state, pending, onLogin, onSync }) {
+function SyncBadge({ uid, state, pending, onLogin, onSync, manual }) {
   if (!uid) {
     return (
       <button onClick={onLogin} title="笔记目前只存在这台电脑上。登录 ResearchHub 后会和网站同步"
@@ -139,11 +140,13 @@ function SyncBadge({ uid, state, pending, onLogin, onSync }) {
       </button>
     );
   }
-  const label = state.busy ? "同步中…" : state.error ? `未同步${pending ? ` ${pending}` : ""}` : pending ? `待同步 ${pending}` : "已同步";
+  // 手动同步：有改动时显示「点此同步」，不自动推
+  const label = state.busy ? "同步中…" : state.error ? `未同步${pending ? ` ${pending}` : ""}`
+    : pending ? (manual ? `${pending} 条未同步 · 同步` : `待同步 ${pending}`) : manual ? "手动同步" : "已同步";
   const color = state.error ? "text-[#ff9a9a]" : state.busy || pending ? "text-[#c8c8c8]" : "text-[#7ee3a0]";
   return (
     <button onClick={onSync} disabled={state.busy}
-      title={state.error ? `${state.error}，点一下重试` : "和 ResearchHub 同步（点一下立即同步）"}
+      title={state.error ? `${state.error}，点一下重试` : manual ? "这篇是手动同步（设置 → 同步），点一下和 ResearchHub 同步" : "和 ResearchHub 同步（点一下立即同步）"}
       className={`h-7 px-2 rounded-md text-[11.5px] bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a] shrink-0 ${color}`}>
       {label}
     </button>
@@ -350,14 +353,17 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     syncing.current = false;
     setSync({ busy: false, error: r.ok ? null : r.error });
   }, [uid, base]);
-  useEffect(() => { runSync(); }, [runSync]);
+  /* 同步方式（设置 → 同步）：arXiv 论文和本地文件分开设。自动 = 打开时、改完 1.5 秒后同步；
+     手动 = 只有点顶栏的同步按钮（或弹窗里的「全部同步」）才同步 */
+  const autoSync = isLocalKey(paperKey) ? settings.syncLocal === "auto" : settings.syncArxiv !== "manual";
+  useEffect(() => { if (autoSync) runSync(); }, [runSync, autoSync]);
   const [editTick, setEditTick] = useState(0);
   const bump = () => setEditTick(t => t + 1);
   useEffect(() => {
-    if (!uid || !editTick) return;
+    if (!uid || !editTick || !autoSync) return;
     const t = setTimeout(runSync, 1500);
     return () => clearTimeout(t);
-  }, [uid, editTick, runSync]);
+  }, [uid, editTick, runSync, autoSync]);
 
   /* 别的版本做的标注：坐标一律不用，降级成页级 + 「位置可能不准」，再按 quote 找回页码 */
   const applyFix = useCallback((a) => {
@@ -367,6 +373,10 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   }, [paperKey, fixes]);
 
   const mineView = useMemo(() => mine.map(applyFix), [mine, applyFix]);
+  /* 「他人」里自己隐藏掉的标注（lib/notes 的 others_hidden）：正文上不画；列表里收起，可以再显示出来 */
+  const [hiddenOthers, setHiddenOthers] = useState(() => new Set());
+  useEffect(() => { loadHiddenOthers().then(setHiddenOthers).catch(() => {}); }, []);
+  const hideOther = async (a, hide) => setHiddenOthers(await setHiddenOther(a.id, hide));
   const othersView = useMemo(
     () => others.map(o => ({ ...o, annotations: o.annotations.map(applyFix) })),
     [others, applyFix]);
@@ -414,11 +424,11 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     /* 指上去的浮卡（附注、框选、高亮、下划线）要显示作者名：给这些挂一个 _author（手写、文本框没有浮卡，不用复制） */
     const myName = me?.name || "我";
     if (scope !== "others") list.push(...mineView.map(a => (a.rects?.length && a.kind !== "ink" && a.kind !== "text" ? { ...a, _author: myName } : a)));
-    if (scope !== "mine") othersView.forEach(o => list.push(...o.annotations.map(a => (a.rects?.length && a.kind !== "ink" && a.kind !== "text"
+    if (scope !== "mine") othersView.forEach(o => list.push(...o.annotations.filter(a => !hiddenOthers.has(a.id)).map(a => (a.rects?.length && a.kind !== "ink" && a.kind !== "text"
       ? { ...a, _author: o.author?.name || o.author?.username || "" } : a))));
     return list;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, mineView, othersView, me?.name]);
+  }, [scope, mineView, othersView, me?.name, hiddenOthers]);
 
   /* 点中的是自己的区域框 ⇒ 进入拖动 / 缩放（正文上那个先不画，由编辑框代替） */
   const editArea = annMenu
@@ -1339,6 +1349,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     visibility: myNote?.visibility || "private",
     onVisibility: async (v) => { await setVisibility(paperKey, meta, v); reload(); bump(); },
     onExport: doExport, exported, page, canShare: !!uid, doc, activeId,
+    // 二级分享：整份分享时某几条不分享；「他人」里隐藏某几条
+    onShareExcluded: async (a, excluded) => { await setShareExcluded(a.paper_key || paperKey, a.id, excluded); reload(); bump(); },
+    hiddenOthers, onHideOther: hideOther,
   };
   /* 点中的那条标注：自己的能改，别人的能收藏 */
   const menuAnn = annMenu && (mineView.find(x => x.id === annMenu.id)
@@ -1840,7 +1853,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           {/* 有新版本（没被忽略）：设置按钮上一个小红点 */}
           {upd.show && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#ff5c5c] pointer-events-none" />}
         </div>
-        <SyncBadge uid={uid} state={sync} pending={pendingCount} onLogin={onLogin} onSync={runSync} />
+        <SyncBadge uid={uid} state={sync} pending={pendingCount} onLogin={onLogin} onSync={runSync} manual={!autoSync} />
         {commentKey && (
           <TBtn onClick={() => setRightOpen(v => !v)} active={rightOpen} title="论文评论（和 ResearchHub 网站互通）">
             <Icon d={IconChat} />{commentCount ? <span className="tabular-nums">{commentCount}</span> : null}

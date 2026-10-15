@@ -138,6 +138,22 @@ export function setVisibility(paperKey, meta, visibility) {
  * 把别人的一条标注收进我的笔记 = **复制一行**并记住来源（同网站：原作者改了删了，
  * 我这份不跟着变；溯源指到**最初**那条，不连成一条链）。标签是个人归类用的，不复制。
  */
+/** 整份笔记分享时，这一条不分享（二级）/ 重新分享 */
+export const setShareExcluded = (paperKey, id, excluded) => updateAnnotation(paperKey, id, { share_excluded: !!excluded });
+
+/* 「他人」里自己隐藏掉的别人的标注（只影响自己看到的，不影响对方）。存一组 id，最多留 5000 个 */
+const HIDDEN_KEY = "others_hidden";
+export async function loadHiddenOthers() {
+  const { [HIDDEN_KEY]: ids } = await chrome.storage.local.get(HIDDEN_KEY);
+  return new Set(ids || []);
+}
+export async function setHiddenOther(id, hidden) {
+  const s = await loadHiddenOthers();
+  if (hidden) s.add(id); else s.delete(id);
+  await chrome.storage.local.set({ [HIDDEN_KEY]: [...s].slice(-5000) });
+  return s;
+}
+
 export function copyAnnotation(paperKey, meta, ann) {
   return addAnnotation(paperKey, meta, {
     page: ann.page, rects: ann.rects, quote: ann.quote, prefix: ann.prefix, suffix: ann.suffix,
@@ -169,16 +185,25 @@ const blockedKinds = new Set();
 const NEW_KINDS = { ink: ["手写笔迹", "0041"], text: ["文本框", "0042"], note: ["附注", "0043"] };
 const kindNotReady = (k) => `${NEW_KINDS[k][0]}暂存本机（网站数据库还没跑迁移 ${NEW_KINDS[k][1]}）`;
 const isCheckViolation = (res) => res.clone().json().then(e => e?.code === "23514").catch(() => false);
-const annCols = () => ANN_COLS + (remoteHasStyle === false ? "" : ",style");
+/* 云端有没有 share_excluded 列（网站迁移 0044：整份分享时去掉某几条）。和 style 一样：没跑时退回不带它，
+   「不分享这条」先只记在本地 */
+let remoteHasExcl = null;
+const annCols = () => ANN_COLS + (remoteHasStyle === false ? "" : ",style") + (remoteHasExcl === false ? "" : ",share_excluded");
+/** 云端缺列：先当作缺新的那列（share_excluded），还缺再去掉 style；都去掉了还缺就返回 false */
+const dropMissingCol = () => {
+  if (remoteHasExcl !== false) { remoteHasExcl = false; return true; }
+  if (remoteHasStyle !== false) { remoteHasStyle = false; return true; }
+  return false;
+};
 const isMissingCol = (res) => res.clone().json().then(e => e?.code === "PGRST204" || e?.code === "42703").catch(() => false);
 
-/** 读标注：带上 style 列；列不存在就去掉再读 */
+/** 读标注：带上 style / share_excluded 列；列不存在就去掉再读 */
 async function readAnnRows(query, auth) {
   let res = await rest(`paper_annotations?${query}&select=${annCols()}`, { auth });
-  if (res?.status === 400 && remoteHasStyle !== false && await isMissingCol(res)) {
-    remoteHasStyle = false;
+  while (res?.status === 400 && await isMissingCol(res) && dropMissingCol()) {
     res = await rest(`paper_annotations?${query}&select=${annCols()}`, { auth });
-  } else if (res?.ok && remoteHasStyle === null) remoteHasStyle = true;
+  }
+  if (res?.ok) { if (remoteHasStyle === null) remoteHasStyle = true; if (remoteHasExcl === null) remoteHasExcl = true; }
   return readJson(res);
 }
 
@@ -194,7 +219,6 @@ async function readJson(res) {
  */
 export async function syncPaper(base, uid) {
   if (!uid) return { ok: false, error: "未登录" };
-  if (isLocalKey(base)) return { ok: true };        // 本地文件（file:…）的笔记先只存本机，同步在下一步接上
 
   /* ① 拉 */
   const notes = await readJson(await rest(`paper_notes?user_id=eq.${uid}&${likeBase(base)}&select=${NOTE_COLS}`, { auth: true }));
@@ -278,22 +302,22 @@ export async function syncPaper(base, uid) {
     else error = "有删除没能同步";
   }
 
-  const rowOf = (a, noteId, withStyle) => {
+  const rowOf = (a, noteId) => {
     const row = { id: a.id, note_id: noteId, user_id: uid };
     SYNC_FIELDS.forEach(f => { row[f] = a[f] ?? null; });
     row.tags = a.tags || [];
-    if (withStyle) row.style = a.style ?? null;
+    if (remoteHasStyle !== false) row.style = a.style ?? null;
+    if (remoteHasExcl !== false) row.share_excluded = !!a.share_excluded;
     return row;
   };
   const upsert = (rows) => rest("paper_annotations?on_conflict=id", {
     method: "POST", auth: true, body: rows, prefer: "resolution=merge-duplicates,return=representation",
   });
-  /** 推一批；列不存在（0040 没跑）就去掉 style 重来；返回 Response */
+  /** 推一批；列不存在（0044 / 0040 没跑）就去掉那一列重来：「不分享」标记 / 样式先只留在本地；返回 Response */
   const pushBatch = async (anns, noteOf) => {
-    let res = await upsert(anns.map(a => rowOf(a, noteOf(a), remoteHasStyle !== false)));
-    if (res?.status === 400 && remoteHasStyle !== false && await isMissingCol(res)) {
-      remoteHasStyle = false;              // 网站还没跑 0040：样式先只留在本地
-      res = await upsert(anns.map(a => rowOf(a, noteOf(a), false)));
+    let res = await upsert(anns.map(a => rowOf(a, noteOf(a))));
+    while (res?.status === 400 && await isMissingCol(res) && dropMissingCol()) {
+      res = await upsert(anns.map(a => rowOf(a, noteOf(a))));
     }
     return res;
   };
@@ -370,7 +394,6 @@ export async function syncAll(uid) {
     `paper_notes?user_id=eq.${uid}&select=paper_key&order=updated_at.desc&limit=200`, { auth: true }));
   if (!remote) return { ok: false, error: "连不上服务器" };
   remote.forEach(n => bases.add(baseOf(n.paper_key)));
-  [...bases].filter(isLocalKey).forEach(b => bases.delete(b));
   let error = null;
   for (const b of bases) {
     const r = await syncPaper(b, uid);
@@ -410,7 +433,6 @@ export async function listLibrary(uid) {
  * 没登录也能看：RLS 对非 private 的行是放开的。
  */
 export async function fetchOthers(paperKey, uid) {
-  if (isLocalKey(paperKey)) return [];
   const base = baseOf(paperKey);
   const notes = (await readJson(await rest(
     `paper_notes?${likeBase(base)}&visibility=eq.public&select=${NOTE_COLS}&order=updated_at.desc&limit=50`,

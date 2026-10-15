@@ -3,7 +3,7 @@
  * 插件管不了（升级只要覆盖文件再点刷新，数据不动）。所以给一个导出成文件、再导入回来的办法。
  *
  * 备份文件（JSON）：{ app: "PDF-Reader", format: 1, version, exportedAt, storage: {...}, local: {...} }
- * - storage：chrome.storage.local 里的笔记（paper:*）和设置（settings）
+ * - storage：chrome.storage.local 里的笔记（paper:*）、设置（settings）、「他人」里隐藏掉的标注（others_hidden）
  * - local：阅读器页面 localStorage 里的 rh_*（阅读位置、分屏 / 工具条 / 画笔样式这些偏好）
  * 不放进去的：登录凭证（auth）、自定义翻译接口的 API Key —— 备份文件可能随手放在哪儿，别带着密钥；
  * 临时的东西：新版本检查的缓存（update*）、更新时重开标签的登记（vt:*）
@@ -21,7 +21,7 @@ export async function exportBackup() {
   const all = await chrome.storage.local.get(null);
   const storage = {};
   for (const [k, v] of Object.entries(all)) {
-    if (k.startsWith(PAPER)) storage[k] = v;
+    if (k.startsWith(PAPER) || k === "others_hidden") storage[k] = v;      // 笔记 + 「他人」里隐藏掉的
   }
   if (all.settings) {
     const { customApi, ...rest } = all.settings;
@@ -84,6 +84,9 @@ export async function importBackup(file) {
       if (!had || newer(a, had)) byId.set(a.id, a);
     }
     out[k] = { notes, anns: [...byId.values()] };
+  }
+  if (Array.isArray(data.storage.others_hidden)) {
+    out.others_hidden = [...new Set([...(cur.others_hidden || []), ...data.storage.others_hidden])].slice(-5000);
   }
   if (data.storage.settings) {
     const s = data.storage.settings, c = cur.settings || {};
