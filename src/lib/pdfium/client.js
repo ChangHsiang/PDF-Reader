@@ -26,7 +26,6 @@ export function createPdfium() {
     text: (docId, pageIndex) => call("text", { docId, pageIndex }),
     namedDests: (docId, prefix) => call("namedDests", { docId, prefix }),
     identify: (docId) => call("identify", { docId }),
-    takeAnnots: (docId) => call("takeAnnots", { docId }),
     exportAnnotated: (bytes, items) => call("exportAnnotated", { bytes, items }, [bytes]),
     close: (docId) => call("close", { docId }),
     mem: () => call("mem"),
