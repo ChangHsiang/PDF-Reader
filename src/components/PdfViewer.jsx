@@ -25,6 +25,7 @@ import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey } from "../lib/refs";
 import { sharedPdfium } from "../lib/pdfium/client";
+import { toPdfAnnotations } from "../lib/exportPdf";
 import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer";
 import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
 import { Avatar, Icon } from "./bits";
@@ -1769,18 +1770,47 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   }, []);
 
   /** 下载已经加载好的字节（不再请求一次 arXiv）；文件名 = arXiv 号 + 标题 */
-  const download = async () => {
-    if (!doc) return;
-    const bytes = await doc.getData();
+  const fileBase = () => {
     // 本地文件（认不出是 arXiv 的）：用原来的文件名
     const id = arxivKey ? arxivKey.replace(/\//g, "_") : (localName || "document").replace(/\.pdf$/i, "");
-    const name = `${id}${title && title !== localName ? ` - ${title}` : ""}`.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 150);
+    return `${id}${title && title !== localName ? ` - ${title}` : ""}`.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 150);
+  };
+  const saveBytes = (bytes, name) => {
     const href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-    const a = Object.assign(document.createElement("a"), { href, download: `${name}.pdf` });
+    const a = Object.assign(document.createElement("a"), { href, download: name });
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(href), 10_000);
+  };
+  const download = async () => {
+    if (!doc) return;
+    saveBytes(await doc.getData(), `${fileBase()}.pdf`);
+  };
+  /* 导出带标注的 PDF（lib/exportPdf）：我的标注写成标准的 PDF 注释，存一份新文件下载。
+     别的阅读器打开都能看能改；原文件不动 */
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(0);
+  const showToast = (text, ok = true) => {
+    clearTimeout(toastTimer.current);
+    setToast({ text, ok });
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  };
+  const downloadAnnotated = async () => {
+    if (!doc) return;
+    const anns = mineView.filter(a => !a.deleted);
+    if (!anns.length) { showToast("这篇还没有我的标注，可以直接下载原文件", false); return; }
+    showToast("正在生成带标注的 PDF…");
+    try {
+      const { items, skipped } = toPdfAnnotations(anns, doc.pages, me?.name || "我");
+      const bytes = await doc.getData();
+      const { bytes: out, failed } = await sharedPdfium().exportAnnotated(bytes.buffer, items);
+      saveBytes(out, `${fileBase()}（标注）.pdf`);
+      const miss = skipped + failed;
+      showToast(`已导出 ${items.length - failed} 条标注${miss ? `，${miss} 条没导出（做于这篇的其它版本、位置对不上，或格式不支持）` : ""}`);
+    } catch (e) {
+      showToast(`导出失败：${e?.message || e}`, false);
+    }
   };
 
   // 「用浏览器自带阅读器打开」：background 给这个标签页加一条放行规则再跳过去
@@ -1846,6 +1876,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         <SplitMenu mode={splitOpen ? splitDir : "off"} disabled={!doc} onPick={setSplitMode} />
         <TBtn onClick={enterFullscreen} title="全屏阅读（Esc 退出）" disabled={!doc}><Icon d={IconFull} /></TBtn>
         <TBtn onClick={download} title="下载 PDF" disabled={!doc}><Icon d={IconDownload} /></TBtn>
+        <DownloadMenu disabled={!doc} onPlain={download} onAnnotated={downloadAnnotated} />
         <TBtn onClick={openRaw} title="用浏览器自带的阅读器打开原文件"><Icon d={IconOpen} /></TBtn>
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
         <div className="relative">
@@ -1950,6 +1981,11 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           </div>
 
           {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+          {toast && (
+            <div className={`absolute left-1/2 -translate-x-1/2 bottom-5 z-[60] max-w-[80%] px-3.5 py-2 rounded-lg text-[12.5px] font-sans
+                            bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in
+                            ${toast.ok ? "text-[#e6e6e6]" : "text-[#ff9a9a]"}`}>{toast.text}</div>
+          )}
           {/* 新版本提示（右下角一张小卡片）：下载 / 看更新说明 / 忽略此版本；✕ 只是这次先不提示，下次打开还会出来 */}
           {upd.show && !updLater && (
             <div className="absolute right-4 bottom-4 z-[60] w-[300px] p-3 rounded-lg bg-[#323639] border border-[#ffffff26]
@@ -2436,6 +2472,56 @@ function SplitMenu({ mode, disabled, onPick }) {
               <span className="w-4 text-[#7ec8e3] text-[12px] text-center">{mode === v ? "✓" : ""}</span>
               <Icon d={icon} size={15} />
               {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 下载按钮旁的下拉：原文件 / 带我的标注的 PDF（样式同分屏下拉） */
+function DownloadMenu({ disabled, onPlain, onAnnotated }) {
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+  useEffect(() => {
+    if (!pos) return;
+    const close = (e) => {
+      if (panelRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
+      setPos(null);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setPos(null); };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", onKey); };
+  }, [pos]);
+  const toggle = () => {
+    if (pos) { setPos(null); return; }
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 150, window.innerWidth - 250)) });
+  };
+  const items = [
+    [onPlain, "下载原文件", "PDF 原样，不带标注"],
+    [onAnnotated, "下载带我的标注的 PDF", "高亮、框选、手写、批注写进文件，Edge / Acrobat / Zotero 都能看能改"],
+  ];
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} disabled={disabled} title="下载方式"
+        className={`h-7 w-4 -ml-1 rounded-md flex items-center justify-center border-none shrink-0
+          ${disabled ? "text-[#ffffff4d] bg-transparent cursor-not-allowed"
+            : pos ? "text-[#fff] bg-[#ffffff33] cursor-pointer" : "text-[#c8c8c8] bg-transparent hover:bg-[#ffffff26] cursor-pointer"}`}>
+        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3"
+          strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {pos && (
+        <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
+          className="w-[240px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          {items.map(([fn, label, desc]) => (
+            <button key={label} onClick={() => { setPos(null); fn(); }}
+              className="w-full flex flex-col items-start gap-0.5 px-2.5 py-1.5 rounded-md text-left bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a]">
+              <span className="text-[13px] font-sans text-[#e6e6e6]">{label}</span>
+              <span className="text-[11px] font-sans text-[#9a9a9a] leading-snug">{desc}</span>
             </button>
           ))}
         </div>

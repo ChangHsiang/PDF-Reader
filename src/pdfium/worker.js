@@ -222,6 +222,29 @@ const ops = {
     }
     return { permanentId: fileId(0), changingId: fileId(1), title: meta("Title"), firstPage: firstPage.slice(0, 20000) };
   },
+  /**
+   * 导出带标注的 PDF：把原文件另开一份（不动正在看的那份），按 items 建标准的 PDF 注释
+   * （高亮 / 下划线 / 方框 / 手写 / 文本框 / 便签，外观由 PDFium 生成，Edge、Acrobat、Zotero 都能看能改），
+   * 存成新文件返回。items：[{ pageIndex, annotation }]，annotation 是 embedpdf 的注释对象（坐标单位点、原点左上，
+   * 见 lib/exportPdf）。建不出来的计数返回，不中断整份导出
+   */
+  async exportAnnotated({ bytes, items }) {
+    const n = await boot();
+    const id = `export-${Date.now()}`;
+    const doc = await run(n.openDocumentBuffer({ id, content: bytes }));
+    let failed = 0;
+    try {
+      for (const { pageIndex, annotation } of items) {
+        const page = doc.pages[pageIndex];
+        if (!page) { failed++; continue; }
+        try { await run(n.createPageAnnotation(doc, page, annotation)); } catch { failed++; }
+      }
+      const out = await run(n.saveAsCopy(doc));
+      return { bytes: out, failed, transfer: [out] };
+    } finally {
+      await run(n.closeDocument(doc)).catch(() => {});
+    }
+  },
   /** 调试用：wasm 堆的大小（PDFium 自己的内存都在这里面） */
   async mem() { return { fontLog, wasmHeapMB: native ? Math.round(native.pdfiumModule?.pdfium?.HEAPU8?.length / 1048576 || native.pdfium?.HEAPU8?.length / 1048576 || 0) : 0, keys: native ? Object.keys(native).slice(0, 12) : [] }; },
   async close({ docId }) {
