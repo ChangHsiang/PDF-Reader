@@ -202,6 +202,42 @@ export function citeGroup(linkEl, label) {
   return [label];
 }
 
+/**
+ * 点 / 指的这个引用链接所在的那一组 `[...]` 在屏幕上的外框（client 坐标），给「整组一起高亮」用。
+ * 和 citeGroup 一样按文字层拼出这一行，找出包含这个编号的方括号，再用 Range 量那几个字。
+ * 文字层还没建好（滚动刚停）、或者不是方括号编号（作者-年份制）就返回 null。
+ */
+export function citeGroupRect(linkEl, label) {
+  const page = linkEl.closest(".page");
+  if (!page) return null;
+  const lr = linkEl.getBoundingClientRect();
+  const cy = lr.top + lr.height / 2;
+  const spans = [...page.querySelectorAll(".textLayer span")]
+    .filter(sp => !sp.children.length && sp.firstChild)
+    .map(sp => ({ sp, r: sp.getBoundingClientRect() }))
+    .filter(({ r }) => r.top <= cy && r.bottom >= cy)
+    .sort((a, b) => a.r.left - b.r.left);
+  let line = "";
+  const at = [];               // 每个 span 在这一行字符串里的起点
+  for (const { sp } of spans) { at.push(line.length); line += sp.textContent; }
+  const locate = (i) => {      // 行里第 i 个字 → [文本节点, 节点内偏移]
+    let k = spans.length - 1;
+    while (k > 0 && at[k] > i) k--;
+    return [spans[k].sp.firstChild, Math.min(i - at[k], spans[k].sp.firstChild.length)];
+  };
+  for (const m of line.matchAll(/\[([^\][]{1,80})\]/g)) {
+    if (!parseGroup(m[1])?.includes(label)) continue;
+    // 必须盖住这个链接本身（同一行可能有两组都含这个编号，罕见）
+    const rg = document.createRange();
+    rg.setStart(...locate(m.index));
+    rg.setEnd(...locate(m.index + m[0].length - 1));
+    rg.setEnd(rg.endContainer, Math.min(rg.endOffset + 1, rg.endContainer.length));
+    const r = rg.getBoundingClientRect();
+    if (r.width && r.left <= lr.right && r.right >= lr.left) return r;
+  }
+  return null;
+}
+
 /* ── 2. 查元数据 ──────────────────────────────────────────────────── */
 
 /** 统一成卡片要的形状 */

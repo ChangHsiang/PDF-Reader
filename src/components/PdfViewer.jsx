@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   paperKeyFromUrl, anchorsFromSelection, reanchorByQuote, norm as normQuote, areaAnchor, pageCanvasBox, commentKeyOf,
 } from "../lib/pdfAnchor";
@@ -20,7 +21,7 @@ import TranslatePop from "./TranslatePop";
 import SettingsDialog from "./SettingsDialog";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
-import { extractReferences, citeGroup, destKey } from "../lib/refs";
+import { extractReferences, citeGroup, citeGroupRect, destKey } from "../lib/refs";
 import { createPdfium } from "../lib/pdfium/client";
 import { tokenize, trimSelection } from "../lib/pdfium/textLayer";
 import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
@@ -1338,14 +1339,36 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     const root = splitRowRef.current;
     setLinkPv(null);
     if (!root || !doc) return;
-    let timer = 0, cur = null;
+    let timer = 0, cur = null, refsVal = null, mark = null;
     const linkOf = (t) => t?.closest?.(".annotationLayer a[data-dest-page]");
+    const num = (v) => (v == null ? null : Number(v));
+    const destOf = (a) => ({ pageIndex: Number(a.dataset.destPage), x: num(a.dataset.destX), y: num(a.dataset.destY) });
+    /* 引用号整组一起高亮：hyperref 只给 [1–10] 的 1 和 10 挂链接，指哪个都把整个方括号框起来
+       （量文字层里这一组的位置；单个链接自己的黄框这时不画，免得叠两层） */
+    const unmark = () => { mark?.el.remove(); mark?.a.classList.remove("rh-grouped"); mark = null; };
+    const markGroup = (a) => {
+      const entry = refsVal?.byPos.get(destKey(...Object.values(destOf(a))));
+      if (!entry || mark?.a === a) return;
+      unmark();
+      const r = citeGroupRect(a, entry.label);
+      const pg = a.closest(".page");
+      if (!r || !pg) return;
+      const pr = pg.querySelector(".canvasWrapper").getBoundingClientRect();
+      const el = document.createElement("div");
+      el.className = "rh-cite-group";
+      el.style.cssText = `left:${(r.left - pr.left) / pr.width * 100}%;top:${(r.top - pr.top) / pr.height * 100}%;` +
+        `width:${r.width / pr.width * 100}%;height:${r.height / pr.height * 100}%`;
+      pg.appendChild(el);
+      a.classList.add("rh-grouped");
+      mark = { a, el };
+    };
     const show = async (a) => {
-      const num = (v) => (v == null ? null : Number(v));
-      const dest = { pageIndex: Number(a.dataset.destPage), x: num(a.dataset.destX), y: num(a.dataset.destY) };
+      const dest = destOf(a);
       refsRef.current ||= extractReferences(doc).catch(() => null);
       const refs = await refsRef.current;
+      refsVal = refs;
       if (cur !== a || !a.isConnected) return;
+      markGroup(a);
       const rect = a.getBoundingClientRect();
       const entry = refs?.byPos.get(destKey(dest.pageIndex, dest.x, dest.y));
       if (entry) {
@@ -1365,6 +1388,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       clearTimeout(pvHideRef.current);
       if (a === cur || e.buttons) return;
       cur = a;
+      markGroup(a);
       clearTimeout(timer);
       timer = setTimeout(() => show(a), 350);
     };
@@ -1373,10 +1397,14 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       if (!a || (e.relatedTarget && a.contains(e.relatedTarget))) return;
       clearTimeout(timer);
       cur = null;
+      unmark();
       pvHide();
     };
-    // 点了（弹文献卡片 / 跳转）、滚动、按键：预览收起
-    const close = () => { clearTimeout(timer); cur = null; clearTimeout(pvHideRef.current); setLinkPv(null); };
+    // 点了（弹文献卡片 / 跳转）、滚动、按键：预览收起。预览框挂在 body 上（portal），框里的操作不会冒泡到这里
+    const close = (e) => {
+      if (e?.type === "keydown" && (e.ctrlKey || e.metaKey || e.key === "Control" || e.key === "Meta" || e.key === "Shift")) return;
+      clearTimeout(timer); cur = null; unmark(); clearTimeout(pvHideRef.current); setLinkPv(null);
+    };
     root.addEventListener("pointerover", over);
     root.addEventListener("pointerout", out);
     root.addEventListener("pointerdown", close, true);
@@ -1384,6 +1412,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     window.addEventListener("keydown", close);
     return () => {
       clearTimeout(timer);
+      unmark();
       root.removeEventListener("pointerover", over);
       root.removeEventListener("pointerout", out);
       root.removeEventListener("pointerdown", close, true);
@@ -1684,7 +1713,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
               )}
               {annMenuView}
               {linkPv && (
-                <LinkPreview pv={linkPv} doc={doc} onEnter={() => clearTimeout(pvHideRef.current)} onLeave={() => pvHide()} />
+                <LinkPreview pv={linkPv} doc={doc} paper={settings.paper || "white"}
+                  onEnter={() => clearTimeout(pvHideRef.current)} onLeave={() => pvHide()} />
               )}
               {refCard && (
                 <RefCard key={`${refCard.group.join(",")}@${refCard.current}`} {...refCard}
@@ -2031,30 +2061,42 @@ function SplitPane({ doc, main, apiRef, annotations, arxivId, eqCopy, onReady, o
 }
 
 /**
- * 链接预览浮框（见 PdfViewer 里的「链接预览」）。fixed 定位：放在链接下方，下面放不下就放上方，左右夹在窗口里。
- * 引用号是一张文字卡（每条参考文献的原文）；别的链接是目标那一页的图（按预览框宽度渲染整页，滚到目标位置）。
- * 页面图挂 rh-thumb：护眼模式 / 夜间的颜色和缩略图一样跟着变。
+ * 链接预览浮框（见 PdfViewer 里的「链接预览」）。fixed 定位：放在链接下方，下面放不下就放上方，左右夹在窗口里；
+ * 一个小三角指着链接。**挂在 body 上（portal）**：放在阅读区里的话，框里按下 / 滚轮会被阅读区当成「点了正文 / 滚了正文」
+ * 把框关掉，划选还会被文字层的拖选接管（踩过）。护眼 / 夜间的颜色靠外面再套一层 rh-paper-*。
+ * 引用号是一张文字卡（每条参考文献的原文）；别的链接是目标那一页的图（和正文一样大，滚到目标位置，红点标出目标）。
  */
-function LinkPreview({ pv, doc, onEnter, onLeave }) {
+function LinkPreview({ pv, doc, paper, onEnter, onLeave }) {
   // 页面图：和正文一样大（最宽 900、不超出窗口），高度约半屏；文字卡固定宽、最大高度 300
   const W = pv.kind === "page" ? Math.round(Math.min(doc.pages[pv.dest.pageIndex].size.width * pv.k, 900, window.innerWidth - 16)) : 460;
   const H = pv.kind === "page" ? Math.round(Math.min(420, window.innerHeight * 0.45)) : 300;
   const r = pv.rect;
-  const below = window.innerHeight - r.bottom >= H + 14 || r.top < H + 14;
+  const GAP = 10;
+  const below = window.innerHeight - r.bottom >= H + GAP + 8 || r.top < H + GAP + 8;
   const left = Math.max(8, Math.min(r.left + r.width / 2 - W / 2, window.innerWidth - W - 8));
-  const pos = below ? { top: Math.min(r.bottom + 6, window.innerHeight - H - 8) } : { bottom: window.innerHeight - r.top + 6 };
-  return (
-    <div className="fixed z-[70] rounded-lg bg-[#fff] border border-[#0000002e] shadow-[0_8px_28px_rgba(0,0,0,0.35)] overflow-hidden animate-fade-in"
-      style={{ left, width: W, ...pos }} onPointerEnter={onEnter} onPointerLeave={onLeave}>
-      {pv.kind === "page"
-        ? <PagePreview doc={doc} dest={pv.dest} width={W} height={H} />
-        : (
-          <div className="overflow-y-auto rh-light-scroll px-3.5 py-2.5 flex flex-col gap-2 text-[13px] leading-[1.5] text-[#222] font-sans"
-            style={{ maxHeight: H }}>
-            {pv.entries.map(e => <div key={e.label}>{/^\s*\[/.test(e.text) ? e.text : `[${e.label}] ${e.text}`}</div>)}
-          </div>
-        )}
-    </div>
+  const pos = below ? { top: Math.min(r.bottom + GAP, window.innerHeight - H - 8) } : { bottom: window.innerHeight - r.top + GAP };
+  const ax = Math.max(14, Math.min(r.left + r.width / 2 - left, W - 14));     // 三角的横坐标（相对框）
+  return createPortal(
+    <div className={`rh-paper-${paper}`}>
+      <div className="fixed z-[70] animate-fade-in" style={{ left, width: W, ...pos }} onPointerEnter={onEnter} onPointerLeave={onLeave}>
+        <div className="absolute w-3 h-3 bg-[#fff] border-[#0000002e] rotate-45"
+          style={{ left: ax - 6, ...(below ? { top: -6, borderLeftWidth: 1, borderTopWidth: 1 } : { bottom: -6, borderRightWidth: 1, borderBottomWidth: 1 }) }} />
+        <div className="relative rounded-lg bg-[#fff] border border-[#0000002e] shadow-[0_8px_28px_rgba(0,0,0,0.35)] overflow-hidden">
+          {pv.kind === "page"
+            ? <PagePreview doc={doc} dest={pv.dest} width={W} height={H} />
+            : (
+              <div className="overflow-y-auto rh-light-scroll px-3.5 py-2.5 flex flex-col gap-2 text-[13px] leading-[1.5] text-[#222] font-sans select-text"
+                style={{ maxHeight: H }}>
+                {pv.entries.map(e => <div key={e.label}>{/^\s*\[/.test(e.text) ? e.text : `[${e.label}] ${e.text}`}</div>)}
+              </div>
+            )}
+        </div>
+        {/* 三角盖住框的边线那一段（同色），看起来是从框里长出来的 */}
+        <div className="absolute w-3 h-3 bg-[#fff] rotate-45 pointer-events-none"
+          style={{ left: ax - 6, ...(below ? { top: -5 } : { bottom: -5 }), clipPath: below ? "polygon(0 0, 100% 0, 0 100%)" : "polygon(100% 0, 100% 100%, 0 100%)" }} />
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -2063,6 +2105,7 @@ function PagePreview({ doc, dest, width, height }) {
   const canvasRef = useRef(null);
   const page = doc.pages[dest.pageIndex];
   const k = width / page.size.width;                 // CSS 像素 / 点
+  const at = dest.y == null ? null : doc.userToPage(dest.pageIndex, dest.x, dest.y);
   useEffect(() => {
     let alive = true;
     const dpr = window.devicePixelRatio || 1;
@@ -2074,8 +2117,7 @@ function PagePreview({ doc, dest, width, height }) {
       bitmap.close();
     }).catch(() => {});
     // 目标位置放在预览框靠上一点（留一行上文）；只给了页码的跳到页首
-    const y = dest.y == null ? 0 : doc.userToPage(dest.pageIndex, dest.x, dest.y).y;
-    if (boxRef.current) boxRef.current.scrollTop = Math.max(0, y * k - 16);
+    if (boxRef.current) boxRef.current.scrollTop = Math.max(0, (at ? at.y : 0) * k - 24);
     return () => { alive = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, dest.pageIndex, dest.y, width]);
@@ -2083,6 +2125,11 @@ function PagePreview({ doc, dest, width, height }) {
     <div ref={boxRef} className="overflow-y-auto overflow-x-hidden rh-light-scroll" style={{ height }}>
       <div className="rh-thumb relative bg-[#fff]" style={{ width, height: page.size.height * k }}>
         <canvas ref={canvasRef} className="block w-full h-full" />
+        {/* 目标位置（跳转会落到的那一点）：红点，同 Zotero */}
+        {at && (
+          <div className="absolute w-3 h-3 rounded-full bg-[#e53935] opacity-85 pointer-events-none"
+            style={{ left: Math.max(2, Math.min(at.x * k, width - 14)) - 6, top: at.y * k - 6 }} />
+        )}
       </div>
     </div>
   );
