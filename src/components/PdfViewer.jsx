@@ -45,6 +45,22 @@ function floatPos(r, vb, need) {
   return { x: r.left + r.width / 2 - vb.left, y: (below ? r.bottom : r.top) - vb.top, below };
 }
 
+/* 阅读位置记在本机：每篇（带版本号）最后看到哪一页、页内滚到几成、缩放方式；刷新 / 再打开时回到那里。
+   一个键存一张表，最多记 300 篇（最久没看的先丢） */
+const POS_KEY = "rh_pos";
+const loadPos = (k) => {
+  try { return JSON.parse(localStorage.getItem(POS_KEY) || "{}")[k] || null; } catch { return null; }
+};
+const savePos = (k, v) => {
+  try {
+    const m = JSON.parse(localStorage.getItem(POS_KEY) || "{}");
+    m[k] = { ...v, t: Date.now() };
+    const ks = Object.keys(m);
+    if (ks.length > 300) ks.sort((a, b) => m[a].t - m[b].t).slice(0, ks.length - 300).forEach(x => delete m[x]);
+    localStorage.setItem(POS_KEY, JSON.stringify(m));
+  } catch { /* 存不了就算了 */ }
+};
+
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3];
 
 /* PDFium（WebAssembly）跑在一个 Worker 里，整个扩展页共用一个（换论文不重启 wasm） */
@@ -140,6 +156,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const apiRef = useRef(null);        // { viewer, linkService, eventBus }
   /* 分屏（SplitPane）开没开 */
   const [splitOpen, setSplitOpen] = useState(false);
+  const preSplitRef = useRef(null);        // 开分屏前主阅读区的缩放方式：关分屏时恢复
   /* 只有一个工具栏（同 Zotero）：页码 / 缩放 / 搜索 / 目录 / 缩略图都作用于「最后点过的那一栏」 */
   const [activePane, setActivePane] = useState("main");
   const splitApiRef = useRef(null);
@@ -158,6 +175,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     if (sc > 0) vs.forEach(x => x.setScaleTo(sc, preset));
   };
   const refitBoth = () => {
+    if (!splitLiveRef.current) return;          // 正在关分屏：第二栏拆掉时它的 ResizeObserver 还会来一次，别再统一倍数
     const v = apiRef.current?.viewer.currentScaleValue;
     if (v && /^(page-|auto)/.test(v)) fitBoth(v);
   };
@@ -167,6 +185,18 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   refitBothRef.current = refitBoth;
   /* 划选发生在哪一栏：工具条、译文弹窗、TransMark 都挂在那一栏的浮层里、按那一栏的坐标放 */
   const [selPane, setSelPane] = useState("main");
+  /* 编辑界面（标注编辑条、文本框编辑、附注卡片、框选调整框）挂在哪一栏：在哪一栏放 / 点的就挂在哪一栏 */
+  const [editPane, setEditPane] = useState("main");
+  const splitOverlayRef = useRef(null);
+  const onSplitOverlay = useCallback((el) => { splitOverlayRef.current = el; setSplitOverlay(el); }, []);
+  /* 框选 / 画笔 / 橡皮擦 / 添加文本 / 附注这些工具在每一栏上各挂一份（分屏时两栏都能用）。
+     fn(P) 收到 { key, container, viewerEl, overlay }，返回清理函数 */
+  const forPanes = (fn) => {
+    const panes = [{ key: "main", container: containerRef.current, viewerEl: viewerElRef.current, overlay: overlayRef.current }];
+    if (splitLiveRef.current) panes.push({ key: "split", container: splitContainerRef.current, viewerEl: splitViewerElRef.current, overlay: splitOverlayRef.current });
+    const offs = panes.filter(p => p.container && p.viewerEl).map(fn);
+    return () => offs.forEach(f => f?.());
+  };
   const paneEls = (p) => (p === "split"
     ? { container: splitContainerRef.current, viewerEl: splitViewerElRef.current }
     : { container: containerRef.current, viewerEl: viewerElRef.current });
@@ -391,19 +421,26 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   mineIdsRef.current = new Set(mineView.map(x => x.id));
   const mineViewRef = useRef([]);
   mineViewRef.current = mineView;
+  /* 点正文上的标注（两栏各一个）：编辑界面挂在点的那一栏 */
+  const makePick = (pane) => (a, el) => {
+    setEditPane(pane);
+    if (a.kind === "text" && mineIdsRef.current.has(a.id)) { openTextRef.current?.(a); return; }
+    if (a.kind === "note") { openNoteRef.current?.(a); return; }
+    setActiveId(a.id);
+    const r = el?.getBoundingClientRect();
+    const vb = paneEls(pane).viewerEl?.getBoundingClientRect();
+    if (r && vb) setAnnMenu({ id: a.id, pos: floatPos(r, vb, 120) });
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pickMain = useCallback(makePick("main"), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const pickSplit = useCallback(makePick("split"), []);
   useHighlightLayer(viewerElRef, apiRef, doc, visibleAnns, {
     hiddenId: editArea?.id || textEdit?.id,
     activeId,
     /* 点正文上的标注：选中它，并在它上方弹出编辑条（换颜色 / 线型 / 批注 / 删除）；
        自己的文本框直接进入编辑（同 Edge：点文字就能改） */
-    onPick: useCallback((a, el) => {
-      if (a.kind === "text" && mineIdsRef.current.has(a.id)) { openTextRef.current?.(a); return; }
-      if (a.kind === "note") { openNoteRef.current?.(a); return; }
-      setActiveId(a.id);
-      const r = el?.getBoundingClientRect();
-      const vb = viewerElRef.current?.getBoundingClientRect();
-      if (r && vb) setAnnMenu({ id: a.id, pos: floatPos(r, vb, 120) });
-    }, []),
+    onPick: pickMain,
   });
 
   /* ── PDFium（lib/pdfium/viewer.js）──────────────────────────────────
@@ -419,7 +456,11 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         viewer = new PdfiumViewer({ container: containerRef.current, viewer: viewerElRef.current, eventBus });
         const linkService = makeLinkService(viewer);
         eventBus.on("pagesinit", () => {
-          viewer.currentScaleValue = "page-actual";     // 默认 100%（纸面原尺寸），不按宽度撑满
+          // 上次看到哪儿就回到哪儿（缩放方式也一样）；第一次打开默认 100%（纸面原尺寸），不按宽度撑满
+          const saved = loadPos(paperKey);
+          viewer.currentScaleValue = saved?.scale || "page-actual";
+          const v = saved?.page && viewer.views[saved.page - 1];
+          if (v) { viewer.container.scrollTop = v.div.offsetTop + (saved.frac || 0) * v.div.offsetHeight; viewer.update(); }
           if (alive) setZoom(viewer.currentScale);
         });
         eventBus.on("pagechanging", (e) => { if (alive) setPage(e.pageNumber); });
@@ -451,6 +492,22 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       apiRef.current = null;
     };
   }, [url]);
+
+  /* 阅读位置：停下来半秒记一次，关页面 / 刷新前再记一次。分屏时主阅读区的缩放是临时统一过的，记分屏前的那个 */
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !doc || !paperKey) return;
+    let t = 0;
+    const save = () => {
+      const v = apiRef.current?.viewer;
+      const a = v?._anchor();
+      if (a) savePos(paperKey, { page: a.index + 1, frac: +a.frac.toFixed(4), scale: preSplitRef.current || v.currentScaleValue });
+    };
+    const onScroll = () => { clearTimeout(t); t = setTimeout(save, 500); };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pagehide", save);
+    return () => { clearTimeout(t); save(); el.removeEventListener("scroll", onScroll); window.removeEventListener("pagehide", save); };
+  }, [doc, paperKey]);
 
   /* 容器宽度变了要自己重排（组件层不管，官方 viewer 的 app.js 才管）。
      只有「自动」类倍数才跟着变，用户手动定过的别改 */
@@ -642,8 +699,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   /* ── 区域框选：在一页上拖一个框（不跨页），pointer 事件 + capture ── */
   useEffect(() => {
     if (tool !== "area") return;
-    const el = containerRef.current;
-    if (!el) return;
+    return forPanes((P) => {
+    const el = P.container;
     let st = null;
     const clamp = (v) => Math.min(1, Math.max(0, v));
     const rectOf = (e) => {
@@ -673,6 +730,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       e.preventDefault();
       clearSel();
       setAnnMenu(null);
+      setEditPane(P.key);
       const box = pageCanvasBox(pageEl);
       const ghost = document.createElement("div");
       /* 拖的时候和拖完等着选颜色的时候都是虚线框，颜色 / 粗细按当前默认样式 */
@@ -693,7 +751,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       const r = rectOf(e);
       const { box, pageEl, ghost } = st;
       const tiny = r.w * box.width < 10 || r.h * box.height < 10;   // 手抖点了一下
-      const vb = viewerElRef.current?.getBoundingClientRect();
+      const vb = P.viewerEl?.getBoundingClientRect();
       if (tiny || !vb) { end(); return; }
       end(true);                       // 虚线框留着，直到存好（clearSel 里删）
       ghostRef.current = ghost;
@@ -708,7 +766,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", end);
-    window.addEventListener("keydown", onKey);
+    if (P.key === "main") window.addEventListener("keydown", onKey);
     return () => {
       end();
       el.removeEventListener("pointerdown", down);
@@ -717,7 +775,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       el.removeEventListener("pointercancel", end);
       window.removeEventListener("keydown", onKey);
     };
-  }, [tool, clearSel]);
+    });
+  }, [tool, clearSel, splitReady]);
 
   /* ── 添加文本 ────────────────────────────────────────────────────
      工具打开时点页面空白处放一个文本框（不点到已有标注上），点外面 / Esc 收起：
@@ -768,14 +827,14 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
 
   useEffect(() => {
     if (tool !== "textbox") return;
-    const el = containerRef.current;
-    if (!el) return;
+    return forPanes((P) => {
+    const el = P.container;
     /* 新文本框的大小：一行高；宽度至少放得下占位提示「在此处开始键入…」（约 10 个字）——
        原来写死 220px，字号一大提示就折成两行（踩过） */
     const geom = (pageEl, e) => {
       const box = pageCanvasBox(pageEl);
       const st = textStyleRef.current;
-      const k = parseFloat(viewerElRef.current.style.getPropertyValue("--scale-factor")) || 1.333;
+      const k = parseFloat(P.viewerEl.style.getPropertyValue("--scale-factor")) || 1.333;
       const fontPx = st.size * k;
       const wPx = Math.min(Math.max(200, fontPx * 10 + 16), box.width);
       const hPx = fontPx * 1.3 + 4;
@@ -789,13 +848,13 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     const ghost = document.createElement("div");
     ghost.style.cssText = "position:absolute;z-index:44;pointer-events:none;box-sizing:border-box;display:none;" +
       "border:1.5px dashed #2f7bd8;border-radius:2px;background:rgba(47,123,216,0.04)";
-    overlayRef.current?.appendChild(ghost);
+    P.overlay?.appendChild(ghost);
     const hideGhost = () => { ghost.style.display = "none"; };
     const move = (e) => {
       const pageEl = e.target?.closest?.(".page");
       if (!pageEl || textEditRef.current || e.target?.closest?.("[data-ann-id]")) { hideGhost(); return; }
       const { left, top, wPx, hPx } = geom(pageEl, e);
-      const vb = viewerElRef.current.getBoundingClientRect();
+      const vb = P.viewerEl.getBoundingClientRect();
       Object.assign(ghost.style, {
         display: "block", left: `${left - vb.left}px`, top: `${top - vb.top}px`, width: `${wPx}px`, height: `${hPx}px`,
       });
@@ -811,6 +870,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       setAnnMenu(null);
       hideGhost();
       const { box, st, left, top, wPx } = geom(pageEl, e);
+      setEditPane(P.key);
       setTextEdit({
         id: null, paper_key: paperKey, page: Number(pageEl.dataset.pageNumber),
         rect: { x: (left - box.left) / box.width, y: (top - box.top) / box.height, w: wPx / box.width, h: 0 },
@@ -821,7 +881,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     el.addEventListener("pointerdown", down);
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerleave", hideGhost);
-    window.addEventListener("keydown", onKey);
+    if (P.key === "main") window.addEventListener("keydown", onKey);
     return () => {
       ghost.remove();
       el.removeEventListener("pointerdown", down);
@@ -829,8 +889,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       el.removeEventListener("pointerleave", hideGhost);
       window.removeEventListener("keydown", onKey);
     };
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, paperKey]);
+  }, [tool, paperKey, splitReady]);
 
   /* ── 附注（kind = "note"，数据格式见 PdfNotes 的 noteIconEl）──────────────
      「添加附注」工具：点页面放一个图标，旁边弹出卡片写内容；放一个就退出这个工具（同 Edge）。
@@ -883,8 +944,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
 
   useEffect(() => {
     if (tool !== "note") return;
-    const el = containerRef.current;
-    if (!el) return;
+    return forPanes((P) => {
+    const el = P.container;
     /* 图标放下去的位置：鼠标在页面上时，跟着一个和图标一样大的虚线框（同「添加文本」） */
     const where = (pageEl, e) => {
       const box = pageCanvasBox(pageEl);
@@ -897,13 +958,13 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     const ghost = document.createElement("div");
     ghost.style.cssText = `position:absolute;z-index:44;pointer-events:none;box-sizing:border-box;display:none;width:${NOTE_SIZE}px;height:${NOTE_SIZE}px;` +
       "border:1.5px dashed #2f7bd8;border-radius:5px;background:rgba(47,123,216,0.06)";
-    overlayRef.current?.appendChild(ghost);
+    P.overlay?.appendChild(ghost);
     const hideGhost = () => { ghost.style.display = "none"; };
     const move = (e) => {
       const pageEl = e.target?.closest?.(".page");
       if (!pageEl || noteEditRef.current || e.target?.closest?.("[data-ann-id]")) { hideGhost(); return; }
       const { left, top } = where(pageEl, e);
-      const vb = viewerElRef.current.getBoundingClientRect();
+      const vb = P.viewerEl.getBoundingClientRect();
       Object.assign(ghost.style, { display: "block", left: `${left - vb.left}px`, top: `${top - vb.top}px` });
     };
     const down = (e) => {
@@ -919,6 +980,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       const { box, left, top } = where(pageEl, e);
       const x = (left - box.left) / box.width, y = (top - box.top) / box.height;
       const name = me?.name || "我";
+      setEditPane(P.key);
       setNoteEdit({
         id: null, paper_key: paperKey, page: Number(pageEl.dataset.pageNumber), rect: { x, y },
         body: "", color: loadNoteColor(), replies: [], at: new Date().toISOString(), author: name, mine: true, me: name, orig: "",
@@ -929,7 +991,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     el.addEventListener("pointerdown", down);
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerleave", hideGhost);
-    window.addEventListener("keydown", onKey);
+    if (P.key === "main") window.addEventListener("keydown", onKey);
     return () => {
       ghost.remove();
       el.removeEventListener("pointerdown", down);
@@ -937,14 +999,16 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       el.removeEventListener("pointerleave", hideGhost);
       window.removeEventListener("keydown", onKey);
     };
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, paperKey, me?.name]);
+  }, [tool, paperKey, me?.name, splitReady]);
 
   /* 拖动自己的附注图标：直接改图标的 left/top（不走 React），松手再存。
      拖过之后紧跟着的那次 click 吞掉，不然一松手卡片就弹出来了 */
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el || !doc) return;
+    if (!doc) return undefined;
+    return forPanes((P) => {
+    const el = P.container;
     let drag = null;
     const down = (e) => {
       if (e.button !== 0) return;
@@ -986,8 +1050,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, paperKey]);
+  }, [doc, paperKey, splitReady]);
 
   /* ── 画笔 / 橡皮擦 ───────────────────────────────────────────────
      一笔一条标注（kind = "ink"，数据格式见 PdfNotes 的 inkSvg）。
@@ -1015,8 +1080,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
 
   useEffect(() => {
     if (tool !== "pen") return;
-    const el = containerRef.current;
-    if (!el) return;
+    return forPanes((P) => {
+    const el = P.container;
     let st = null;
     const SVGNS = "http://www.w3.org/2000/svg";
     const norm = (e) => [(e.clientX - st.box.left) / st.box.width, (e.clientY - st.box.top) / st.box.height];
@@ -1086,7 +1151,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
-    window.addEventListener("keydown", onKey);
+    if (P.key === "main") window.addEventListener("keydown", onKey);
     return () => {
       st?.svg.remove();
       el.removeEventListener("pointerdown", down);
@@ -1095,14 +1160,15 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       el.removeEventListener("pointercancel", up);
       window.removeEventListener("keydown", onKey);
     };
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool]);
+  }, [tool, splitReady]);
 
   /* 橡皮擦：按住拖过去，碰到的手写笔迹整条删掉（同 Edge 的「笔划橡皮擦」）。只擦自己的、只擦笔迹 */
   useEffect(() => {
     if (tool !== "eraser") return;
-    const el = containerRef.current;
-    if (!el) return;
+    return forPanes((P) => {
+    const el = P.container;
     let pressed = null;
     const gone = new Set();
     const R = 8;                                // 橡皮擦半径（px）
@@ -1146,7 +1212,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
-    window.addEventListener("keydown", onKey);
+    if (P.key === "main") window.addEventListener("keydown", onKey);
     return () => {
       el.removeEventListener("pointerdown", down);
       el.removeEventListener("pointermove", move);
@@ -1154,8 +1220,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       el.removeEventListener("pointercancel", up);
       window.removeEventListener("keydown", onKey);
     };
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, paperKey]);
+  }, [tool, paperKey, splitReady]);
 
   /* ── 写 ─────────────────────────────────────────────────────── */
   const saveArea = async (anchor, pos) => {
@@ -1326,12 +1393,23 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   /* 分屏下拉菜单：off / h（左右）/ v（上下）。换方向时两栏都换成对应的「适合」方式，
      等这一帧排完（栏的尺寸变了）再统一算倍数，然后各自对齐到当前这一页的页首，不停在两页中间 */
   const setSplitMode = (m) => {
-    if (m === "off") { setActivePane("main"); setSplitOpen(false); return; }
+    if (m === "off") {
+      splitLiveRef.current = false;
+      setActivePane("main");
+      setSplitOpen(false);
+      /* 恢复开分屏前的大小。马上设：主阅读区变回原宽时 ResizeObserver 会按这个方式再算一次（「适合宽度」就按原宽算了）；
+         等变宽之后再设的话，中间会先按分屏时的「适合页面」闪一下 */
+      const prev = preSplitRef.current;
+      preSplitRef.current = null;
+      if (prev && apiRef.current) apiRef.current.viewer.currentScaleValue = prev;
+      return;
+    }
     if (m !== splitDir) {
       try { localStorage.setItem("rh_split_dir", m); } catch { /* 存不了就算了 */ }
       setSplitDir(m);
     }
     if (!splitOpen) {
+      preSplitRef.current = apiRef.current?.viewer.currentScaleValue || null;
       if (apiRef.current) apiRef.current.viewer.currentScaleValue = fitFor(m);
       setSplitOpen(true);
     } else if (m !== splitDir) {
@@ -1471,6 +1549,36 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
+  /* 工具模式（光标、不能选字）：两栏共用 */
+  const toolCls = (tool === "area" ? "rh-area-mode" : tool === "pen" ? "rh-area-mode rh-pen-mode" : tool === "eraser" ? "rh-area-mode rh-eraser-mode" : tool === "textbox" ? "rh-area-mode rh-textbox-mode" : tool === "note" ? "rh-area-mode rh-note-mode" : "");
+  /* 标注的编辑界面：挂在 editPane 那一栏的浮层里，坐标按那一栏的 .pdfViewer 算 */
+  const renderEdit = (pane) => editPane === pane && (
+            <>
+              {textEdit && (
+                <TextBoxEditor key={textEdit.id || "new"} draft={textEdit} viewerEl={paneEls(pane).viewerEl} zoom={zoom}
+                  onChange={(patch) => setTextEdit({ ...textEditRef.current, ...patch })}
+                  onDone={finishText} onDelete={deleteText} />
+              )}
+              {noteEdit && (
+                <NotePopup key={noteEdit.id || "new-note"} draft={noteEdit} viewerEl={paneEls(pane).viewerEl} zoom={zoom}
+                  onChange={(patch) => {
+                    const n = { ...noteEditRef.current, ...patch };
+                    setNoteEdit(n);
+                    /* 换颜色：记成以后新附注的默认色；已经存过的附注马上改（页面上的图标立刻变色，不等卡片收起） */
+                    if (patch.color) {
+                      saveNoteColor(patch.color);
+                      if (n.id) updateAnnotation(n.paper_key, n.id, { color: patch.color }).then(() => { reload(); bump(); });
+                    }
+                  }}
+                  onDone={finishNote} onDelete={deleteNote} />
+              )}
+              {editArea && (
+                <AreaEditBox key={`edit-${editArea.id}`} a={editArea} viewerEl={paneEls(pane).viewerEl} zoom={zoom}
+                  onCommit={(rect, pageEl) => commitAreaRect(editArea, rect, pageEl)} />
+              )}
+              {annMenuView}
+            </>
+  );
   /* 划选工具条 + 译文弹窗：挂在划选发生的那一栏（selPane / trans.pane）的浮层里 */
   const renderSel = (pane) => (
             <>
@@ -1731,36 +1839,14 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
           onPointerDownCapture={() => setActivePane("main")}>
           {splitOpen && activePane === "main" && <div className="rh-pane-active" />}
           <div ref={containerRef}
-            className={`absolute inset-0 overflow-auto overscroll-contain thin-scrollbar ${tool === "area" ? "rh-area-mode" : tool === "pen" ? "rh-area-mode rh-pen-mode" : tool === "eraser" ? "rh-area-mode rh-eraser-mode" : tool === "textbox" ? "rh-area-mode rh-textbox-mode" : tool === "note" ? "rh-area-mode rh-note-mode" : ""}`}>
+            className={`absolute inset-0 overflow-auto overscroll-contain thin-scrollbar ${toolCls}`}>
             {/* pdf.js 往这个元素里插 / 删 .page，React 的东西不和它混在一起 */}
             <div ref={viewerElRef} className="pdfViewer relative" />
             {/* 浮层另起一层，和 .pdfViewer 左上角重合、一起滚；坐标照旧按 .pdfViewer 的盒子算。
                 **这一层里的兄弟节点 key 不能重**：编辑框和编辑条最早都拿标注 id 当 key，
                 重复 key 让 React 跟丢了节点 —— 编辑框关不掉、点一次多一个（踩过） */}
             <div ref={overlayRef} className="absolute left-0 top-0 w-full h-0">
-              {textEdit && (
-                <TextBoxEditor key={textEdit.id || "new"} draft={textEdit} viewerEl={viewerElRef.current} zoom={zoom}
-                  onChange={(patch) => setTextEdit({ ...textEditRef.current, ...patch })}
-                  onDone={finishText} onDelete={deleteText} />
-              )}
-              {noteEdit && (
-                <NotePopup key={noteEdit.id || "new-note"} draft={noteEdit} viewerEl={viewerElRef.current} zoom={zoom}
-                  onChange={(patch) => {
-                    const n = { ...noteEditRef.current, ...patch };
-                    setNoteEdit(n);
-                    /* 换颜色：记成以后新附注的默认色；已经存过的附注马上改（页面上的图标立刻变色，不等卡片收起） */
-                    if (patch.color) {
-                      saveNoteColor(patch.color);
-                      if (n.id) updateAnnotation(n.paper_key, n.id, { color: patch.color }).then(() => { reload(); bump(); });
-                    }
-                  }}
-                  onDone={finishNote} onDelete={deleteNote} />
-              )}
-              {editArea && (
-                <AreaEditBox key={`edit-${editArea.id}`} a={editArea} viewerEl={viewerElRef.current} zoom={zoom}
-                  onCommit={(rect, pageEl) => commitAreaRect(editArea, rect, pageEl)} />
-              )}
-              {annMenuView}
+              {renderEdit("main")}
               {linkPv && (
                 <LinkPreview pv={linkPv} doc={doc} paper={settings.paper || "white"}
                   onEnter={() => clearTimeout(pvHideRef.current)} onLeave={() => pvHide()} />
@@ -1837,10 +1923,11 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
             <div className="relative shrink-0 min-w-0 min-h-0" style={splitDir === "v" ? { height: `${splitFrac * 100}%` } : { width: `${splitFrac * 100}%` }}
               onPointerDownCapture={() => setActivePane("split")}>
               <SplitPane doc={doc} main={apiRef} apiRef={splitApiRef} annotations={visibleAnns}
-                containerRef={splitContainerRef} viewerElRef={splitViewerElRef} onOverlay={setSplitOverlay}
+                containerRef={splitContainerRef} viewerElRef={splitViewerElRef} onOverlay={onSplitOverlay}
+                onPick={pickSplit} activeId={activeId} hiddenId={editArea?.id || textEdit?.id} modeCls={toolCls}
                 arxivId={paperKey.replace(/^arxiv:/, "")} eqCopy={settings.eqCopy}
                 onReady={setSplitReady} onView={setSplitView} onResize={() => refitBothRef.current()} />
-              {splitOverlay && createPortal(renderSel("split"), splitOverlay)}
+              {splitOverlay && createPortal(<>{renderEdit("split")}{renderSel("split")}</>, splitOverlay)}
               {activePane === "split" && <div className="rh-pane-active" />}
             </div>
           </>
@@ -2057,7 +2144,8 @@ function ZoomMenu({ zoom, mode, onPick }) {
  * 打开时照抄主阅读区此刻的缩放方式（「适合宽度」这类按自己的栏宽重算）和看到的位置，一出来两栏一模一样。
  * 标注照样画出来（只看，点了不弹编辑条），公式旁的复制按钮也有；划选只能复制，加标注 / 翻译在主阅读区做。
  */
-function SplitPane({ doc, main, apiRef, containerRef, viewerElRef, onOverlay, annotations, arxivId, eqCopy, onReady, onView, onResize }) {
+function SplitPane({ doc, main, apiRef, containerRef, viewerElRef, onOverlay, onPick, activeId, hiddenId, modeCls,
+                     annotations, arxivId, eqCopy, onReady, onView, onResize }) {
   const [ready, setReady] = useState(null);
 
   useEffect(() => {
@@ -2102,14 +2190,14 @@ function SplitPane({ doc, main, apiRef, containerRef, viewerElRef, onOverlay, an
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useHighlightLayer(viewerElRef, apiRef, ready, annotations, { onPick: useCallback(() => {}, []) });
+  useHighlightLayer(viewerElRef, apiRef, ready, annotations, { onPick, activeId, hiddenId });
   useEquationCopy(viewerElRef, apiRef, ready, arxivId, eqCopy);
 
   return (
     <div className="relative h-full bg-[#525659]">
-      <div ref={containerRef} className="absolute inset-0 overflow-auto overscroll-contain thin-scrollbar">
+      <div ref={containerRef} className={`absolute inset-0 overflow-auto overscroll-contain thin-scrollbar ${modeCls}`}>
         <div ref={viewerElRef} className="pdfViewer relative" />
-        {/* 浮层（同主阅读区）：划选工具条、译文弹窗由外面 portal 进来 */}
+        {/* 浮层（同主阅读区）：划选工具条、译文弹窗、标注编辑界面由外面 portal 进来 */}
         <div ref={onOverlay} className="absolute left-0 top-0 w-full h-0" />
       </div>
     </div>
