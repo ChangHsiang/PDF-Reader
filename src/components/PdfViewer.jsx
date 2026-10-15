@@ -71,7 +71,7 @@ const IconNotes = <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L
 const IconGear = <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>;
 const IconNote = <><path d="M20 15.5a1.5 1.5 0 0 1-1.5 1.5H8.5L4 20.5V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5z" /><path d="M8 8.5h8M8 12.5h5" /></>;
 const IconSplit = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="12" y1="4" x2="12" y2="20" /></>;
-const IconRotate = <><path d="M20 11a8 8 0 1 0-2.3 5.7" /><polyline points="20 4 20 10 14 10" /></>;
+const IconSplitV = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="12" x2="21" y2="12" /></>;
 const IconChat = <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />;
 
 const TBtn = ({ onClick, title, disabled, active, children }) => (
@@ -145,6 +145,31 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const splitApiRef = useRef(null);
   const [splitReady, setSplitReady] = useState(false);
   const [splitView, setSplitView] = useState({ page: 1, zoom: 1, mode: null });
+  const splitContainerRef = useRef(null);
+  const splitViewerElRef = useRef(null);
+  const [splitOverlay, setSplitOverlay] = useState(null);     // 第二栏的浮层（划选工具条、译文弹窗挂进去）
+  /* 分屏时两栏页面一样大（同 Zotero 一开始两栏一模一样）：「适合宽度 / 页面」这类取两栏里算出来较小的那个倍数，
+     两栏都用它；数字倍数直接两栏都设。记住是哪种自动方式，栏的尺寸变了再统一算一次 */
+  const fitBoth = (v) => {
+    const vs = [apiRef.current?.viewer, splitApiRef.current?.viewer].filter(Boolean);
+    if (!vs.length) return;
+    const preset = /^(page-|auto)/.test(v) ? v : null;
+    const sc = preset ? Math.min(...vs.map(x => x._resolve(preset))) : parseFloat(v);
+    if (sc > 0) vs.forEach(x => x.setScaleTo(sc, preset));
+  };
+  const refitBoth = () => {
+    const v = apiRef.current?.viewer.currentScaleValue;
+    if (v && /^(page-|auto)/.test(v)) fitBoth(v);
+  };
+  const splitLiveRef = useRef(false);
+  splitLiveRef.current = splitOpen && splitReady;
+  const refitBothRef = useRef(refitBoth);
+  refitBothRef.current = refitBoth;
+  /* 划选发生在哪一栏：工具条、译文弹窗、TransMark 都挂在那一栏的浮层里、按那一栏的坐标放 */
+  const [selPane, setSelPane] = useState("main");
+  const paneEls = (p) => (p === "split"
+    ? { container: splitContainerRef.current, viewerEl: splitViewerElRef.current }
+    : { container: containerRef.current, viewerEl: viewerElRef.current });
 
   // doc 必须进 state（缩略图栏在渲染期用它，读 ref 不会触发重渲染）
   const [doc, setDoc] = useState(null);
@@ -196,9 +221,10 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const [settingsOpen, setSettingsOpen] = useState(false);
   /* 译文弹窗的位置：默认放在选区**下方**（上方是刚读过的内容，盖住它最碍事），
      下面放不下才翻到上方；水平方向夹在阅读区里，别伸出边外被裁掉 */
-  const transPos = (rectList) => {
-    const vb = viewerElRef.current.getBoundingClientRect();
-    const cb = containerRef.current.getBoundingClientRect();
+  const transPos = (rectList, pane = "main") => {
+    const els = paneEls(pane);
+    const vb = els.viewerEl.getBoundingClientRect();
+    const cb = els.container.getBoundingClientRect();
     const rs = [...rectList].filter(r => r.width > 0.5 && r.height > 0.5);
     const top = Math.min(...rs.map(r => r.top)), bottom = Math.max(...rs.map(r => r.bottom));
     const left = Math.min(...rs.map(r => r.left)), right = Math.max(...rs.map(r => r.right));
@@ -436,6 +462,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       if (el.clientWidth === w && el.clientHeight === h) return;
       const onlyH = el.clientWidth === w;
       w = el.clientWidth; h = el.clientHeight;
+      if (splitLiveRef.current) { refitBothRef.current(); return; }
       const v = apiRef.current?.viewer.currentScaleValue;
       // 只是高度变了（上下分屏、拖分隔条）：只有「适合页面 / 高度」要重算
       if (onlyH ? (v === "page-fit" || v === "page-height") : (v === "page-width" || v === "auto" || v === "page-fit" || v === "page-actual")) {
@@ -463,7 +490,11 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     if (Number.isFinite(n) && n > 0) setScale(Math.min(500, Math.max(10, n)) / 100);
     setZoomInput(String(Math.round(vZoom * 100)));
   };
-  const setScale = (v) => { const a = act(); if (a) a.viewer.currentScaleValue = String(v); };
+  // 分屏时缩放两栏一起改（两栏页面一样大，见 fitBoth）；页码、搜索还是各管各的
+  const setScale = (v) => {
+    if (splitOpen && splitReady) { fitBoth(String(v)); return; }
+    const a = act(); if (a) a.viewer.currentScaleValue = String(v);
+  };
   const stepZoom = (dir) => {
     const i = ZOOMS.findIndex(z => z > vZoom + 0.001);
     const next = dir > 0
@@ -492,10 +523,11 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   };
   const goDest = (dest) => act()?.linkService.goToDestination(dest);
 
-  /* ── 划选 → 工具条（放进 .pdfViewer 的内容坐标里，跟着页面滚） ── */
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+  /* ── 划选 → 工具条（放进 .pdfViewer 的内容坐标里，跟着页面滚）。两栏都能划选：
+     工具条挂在划选的那一栏（selPane），坐标按那一栏的 .pdfViewer 算 ── */
+  const selWatch = (pane) => {
+    const { container: el } = paneEls(pane);
+    if (!el) return undefined;
     const clear = () => { setSelPos(null); setPending(null); };
     const onUp = (e) => {
       if (e.target?.closest?.(".rh-selbar")) return;
@@ -508,8 +540,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         if (!anchors.length) { clear(); return; }
         const rects = sel.getRangeAt(0).getClientRects();
         const last = rects[rects.length - 1];
-        const vb = viewerElRef.current?.getBoundingClientRect();
+        const vb = paneEls(pane).viewerEl?.getBoundingClientRect();
         if (!last || !vb) { clear(); return; }
+        setSelPane(pane);
         setPending(anchors);
         /* 工具条放在**整段选区的最上面**，水平居中于选区。以前按最后一行的上沿放，
            选了好几行时工具条正好盖在前面几行上 */
@@ -521,13 +554,17 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         /* 设置里开了「选中直接翻译」：工具条照常在上面，译文弹在选区下面 */
         // 翻译框钉住了：不管开没开「直接翻译」，选中的都翻进那个浮窗
         if ((autoTransRef.current || transPinRef.current) && anchors[0].quote?.length > 1) {
-          setTrans({ anchors, text: anchors[0].quote, pos: transPosRef.current(rects) });
+          setTrans({ anchors, text: anchors[0].quote, pos: transPosRef.current(rects, pane), pane });
         }
       }, 0);
     };
     el.addEventListener("mouseup", onUp);
     return () => el.removeEventListener("mouseup", onUp);
-  }, []);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => selWatch("main"), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => (splitReady ? selWatch("split") : undefined), [splitReady]);
 
   const clearSel = useCallback(() => {
     setSelPos(null); setPending(null);
@@ -1281,23 +1318,36 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const readerRef = useRef(null);
   /* 分屏（SplitPane）：左右（h）或上下（v）。第二栏占整个阅读区域的比例，拖中间的分隔条改；方向和比例记在本机 */
   const [splitDir, setSplitDir] = useState(() => { try { return localStorage.getItem("rh_split_dir") === "v" ? "v" : "h"; } catch { return "h"; } });
-  const flipSplit = () => {
-    const n = splitDir === "h" ? "v" : "h";
-    try { localStorage.setItem("rh_split_dir", n); } catch { /* 存不了就算了 */ }
-    setSplitDir(n);
-    // 换方向时两栏都换成对应的「适合」方式
-    [apiRef.current, splitApiRef.current].forEach(a => { if (a) a.viewer.currentScaleValue = fitFor(n); });
-    // 栏的尺寸要等这一帧排完才变（ResizeObserver 会再算一次倍数）；之后各自对齐到当前这一页的页首，不停在两页中间
-    setTimeout(() => [apiRef.current, splitApiRef.current].forEach(a => a?.viewer.scrollToPage(a.viewer.currentPageNumber)), 120);
-  };
+  const splitDirRef = useRef(splitDir);
+  splitDirRef.current = splitDir;
   /* 开分屏时主阅读区改成「适合宽度」（左右分）/「适合页面」（上下分：一栏只有半屏高，按宽度撑满就只露半页）。
      先设上，容器缩窄之后 ResizeObserver 还会按新尺寸再算一次。第二栏照抄主阅读区此刻的缩放方式和位置（SplitPane） */
   const fitFor = (dir) => (dir === "v" ? "page-fit" : "page-width");
-  const toggleSplit = () => {
-    if (!splitOpen && apiRef.current) apiRef.current.viewer.currentScaleValue = fitFor(splitDir);
-    if (splitOpen) setActivePane("main");
-    setSplitOpen(v => !v);
+  /* 分屏下拉菜单：off / h（左右）/ v（上下）。换方向时两栏都换成对应的「适合」方式，
+     等这一帧排完（栏的尺寸变了）再统一算倍数，然后各自对齐到当前这一页的页首，不停在两页中间 */
+  const setSplitMode = (m) => {
+    if (m === "off") { setActivePane("main"); setSplitOpen(false); return; }
+    if (m !== splitDir) {
+      try { localStorage.setItem("rh_split_dir", m); } catch { /* 存不了就算了 */ }
+      setSplitDir(m);
+    }
+    if (!splitOpen) {
+      if (apiRef.current) apiRef.current.viewer.currentScaleValue = fitFor(m);
+      setSplitOpen(true);
+    } else if (m !== splitDir) {
+      setTimeout(() => {
+        fitBoth(fitFor(m));
+        [apiRef.current, splitApiRef.current].forEach(a => a?.viewer.scrollToPage(a.viewer.currentPageNumber));
+      }, 80);
+    }
   };
+  const toggleSplit = () => setSplitMode(splitOpen ? "off" : splitDir);
+  // 第二栏建好了：两栏统一成一样大
+  useEffect(() => {
+    if (!splitReady) return;
+    requestAnimationFrame(() => fitBoth(fitFor(splitDirRef.current)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [splitReady]);
   const [splitFrac, setSplitFrac] = useState(() => {
     try { const f = parseFloat(localStorage.getItem("rh_split")); return f > 0.15 && f < 0.85 ? f : 0.5; } catch { return 0.5; }
   });
@@ -1421,6 +1471,55 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
+  /* 划选工具条 + 译文弹窗：挂在划选发生的那一栏（selPane / trans.pane）的浮层里 */
+  const renderSel = (pane) => (
+            <>
+              {selPane === pane && selPos && pending && (
+                <div className="rh-selbar">
+                  <SelectionBar pos={selPos}
+                    kind={areaPending ? "area" : markKind}
+                    onKind={areaPending ? null : pickMarkKind}
+                    defaultColor={areaPending ? areaStyle.color : null}
+                    onHighlight={(c) => saveAnchors(pending, areaPending
+                      ? { color: c, style: { dash: areaStyle.dash, width: areaStyle.width } }
+                      : { color: c, kind: markKind })}
+                    onNote={() => {
+                      setDraft({
+                        anchors: pending, page: pending[0].page, quote: pending[0].quote, body: "",
+                        kind: areaPending ? "area" : markKind, rects: pending[0].rects, tags: [],
+                      });
+                      clearSel();
+                    }}
+                    onTranslate={areaPending ? null : () => {
+                      const sel = window.getSelection();
+                      const rects = sel?.rangeCount ? sel.getRangeAt(0).getClientRects() : [];
+                      // manual：浏览器选区会被清掉，原文改由 TransMark 标出来，不然看不出翻的是哪段
+                      setTrans({ anchors: pending, text: pending[0].quote, manual: true,
+                                 pos: rects.length ? transPos(rects, selPane) : { ...selPos, below: false }, pane: selPane });
+                      clearSel();
+                    }}
+                    onCancel={clearSel} />
+                </div>
+              )}
+              {trans?.manual && (trans.pane || "main") === pane && <TransMark anchors={trans.anchors} viewerEl={paneEls(pane).viewerEl} zoom={zoom} />}
+              {(trans || transPin) && (trans?.pane || "main") === pane && (
+                /* 钉住时 key 固定：换一段文字只是换内容，浮窗不重建（不闪、不丢位置） */
+                <TranslatePop key={transPin ? "pinned" : trans.text} text={trans?.text || ""} pos={trans?.pos}
+                  pinned={transPin} fixedPos={transFixed} onPin={pinTrans}
+                  onMove={(pos, done) => {
+                    // ref 立刻跟上：松手那一下比重渲染先到，读 state 会存成上一步的位置
+                    if (pos) { transFixedRef.current = pos; setTransFixed(pos); }
+                    if (done) localStorage.setItem("rh_trans_pos", JSON.stringify(transFixedRef.current));
+                  }}
+                  onClose={() => { if (transPin) pinTrans(false); setTrans(null); }}
+                  onSaveNote={async (translated) => {
+                    if (!trans) return;
+                    await saveAnchors(trans.anchors, { color: "yellow", kind: markKind, body: translated });
+                    if (!transPin) setTrans(null);
+                  }} />
+              )}
+            </>
+  );
   const enterFullscreen = () => { readerRef.current?.requestFullscreen?.().catch(() => {}); };
 
   /* ── 浮动标注工具条：能拖、能横竖切换，位置和方向记在本机 ──
@@ -1438,7 +1537,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   });
   const tbRef = useRef(null);
   const clampTb = (x, y) => {
-    const rr = readerRef.current?.getBoundingClientRect(), br = tbRef.current?.getBoundingClientRect();
+    const rr = splitRowRef.current?.getBoundingClientRect(), br = tbRef.current?.getBoundingClientRect();
     if (!rr || !br) return { x, y };
     return { x: Math.round(Math.min(Math.max(4, x), Math.max(4, rr.width - br.width - 4))),
              y: Math.round(Math.min(Math.max(4, y), Math.max(4, rr.height - br.height - 4))) };
@@ -1446,7 +1545,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const dragTb = (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    const rr = readerRef.current.getBoundingClientRect(), br = tbRef.current.getBoundingClientRect();
+    const rr = splitRowRef.current.getBoundingClientRect(), br = tbRef.current.getBoundingClientRect();
     const ox = e.clientX - br.left, oy = e.clientY - br.top;
     const move = (ev) => setTbRaw(p => ({ ...p, pos: clampTb(ev.clientX - ox - rr.left, ev.clientY - oy - rr.top) }));
     const up = () => {
@@ -1473,6 +1572,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   useEffect(() => {
     const onFs = () => {
       const refit = () => {
+        if (splitLiveRef.current) { refitBothRef.current(); return; }
         const v = apiRef.current?.viewer.currentScaleValue;
         if (v === "page-width" || v === "page-height" || v === "page-fit" || v === "auto") apiRef.current.viewer.currentScaleValue = v;
       };
@@ -1555,11 +1655,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         <div className="flex-1 basis-0 min-w-0 flex items-center justify-end gap-1">
 
         <TBtn onClick={() => (findOpen ? closeFind() : openFind())} title="搜索（Ctrl+F）" active={findOpen}><Icon d={IconSearch} /></TBtn>
-        <TBtn onClick={toggleSplit} title={splitOpen ? "关闭分屏" : "分屏：右边再开一个阅读区看同一篇（各自滚动、缩放）"}
-          active={splitOpen} disabled={!doc}><Icon d={IconSplit} /></TBtn>
-        {splitOpen && (
-          <TBtn onClick={flipSplit} title={splitDir === "v" ? "改成左右分屏" : "改成上下分屏"}><Icon d={IconRotate} /></TBtn>
-        )}
+        <TBtn onClick={toggleSplit} title={splitOpen ? "关闭分屏" : "分屏：再开一个阅读区看同一篇（各自滚动）"}
+          active={splitOpen} disabled={!doc}><Icon d={splitDir === "v" ? IconSplitV : IconSplit} /></TBtn>
+        <SplitMenu mode={splitOpen ? splitDir : "off"} disabled={!doc} onPick={setSplitMode} />
         <TBtn onClick={enterFullscreen} title="全屏阅读（Esc 退出）" disabled={!doc}><Icon d={IconFull} /></TBtn>
         <TBtn onClick={download} title="下载 PDF" disabled={!doc}><Icon d={IconDownload} /></TBtn>
         <TBtn onClick={openRaw} title="用浏览器自带的阅读器打开原文件"><Icon d={IconOpen} /></TBtn>
@@ -1578,7 +1676,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       </div>
 
       {/* 页面颜色（护眼）的类挂在这一层：正文和左侧栏的缩略图都在它里面，一起变色 */}
-      <div className={`relative flex-1 flex min-h-0 rh-paper-${settings.paper || "white"}`}>
+      <div className={`relative flex-1 flex min-h-0 rh-paper-${settings.paper || "white"} ${settings.showLinks ? "rh-show-links" : ""}`}>
         {/* 左侧栏：绝对定位盖在阅读区上，transform 滑进滑出（不改正文宽度，所以页面不会跟着重排 / 跳动）。
             关着的时候也挂着（inert + 移出视口）：再打开时目录展开状态、笔记筛选条件都还在，
             缩略图在视口外不会被 IntersectionObserver 触发渲染 */}
@@ -1632,55 +1730,6 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         <div ref={readerRef} className="relative flex-1 min-w-0 min-h-0 bg-[#525659]"
           onPointerDownCapture={() => setActivePane("main")}>
           {splitOpen && activePane === "main" && <div className="rh-pane-active" />}
-          {/* 标注工具条（顶栏放不下了）：浮在阅读区上，能拖（抓手 ⠿）、能横竖切换，位置记在本机。
-              没拖过时竖排贴左边上下居中 / 横排贴顶边左右居中，左侧栏滑出来时跟着让开。
-              居中用一层不吃指针的 flex 外壳，**不用 translate(-50%)**：带 transform 的祖先会让里面
-              position:fixed 的下拉菜单改成相对它定位，菜单就跑到别处去了（踩过） */}
-          {doc && (
-            <div className={tb.pos ? "absolute z-[50] pointer-events-none"
-              : `absolute z-[50] flex pointer-events-none transition-[left] duration-200 ease-out
-                 ${tb.horiz ? "top-2.5 right-0 justify-center" : "inset-y-0 items-center"}`}
-              style={tb.pos ? { left: tb.pos.x, top: tb.pos.y } : { left: sideOpen ? 328 + 10 : 10 }}>
-            <div ref={tbRef}
-              className={`pointer-events-auto flex ${tb.horiz ? "flex-row items-center" : "flex-col items-stretch"} gap-0.5 p-1
-                          rounded-xl bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.4)]`}>
-              <div onPointerDown={dragTb} title="拖动工具条"
-                className={`flex items-center justify-center rounded-md cursor-move text-[#9a9a9a] hover:text-[#fff] hover:bg-[#ffffff1a]
-                            touch-none ${tb.horiz ? "w-3 self-stretch" : "h-3"}`}>
-                <svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor" style={{ transform: tb.horiz ? "rotate(90deg)" : "none" }}>
-                  {[2, 6, 10].flatMap(x => [4, 8].map(y => <circle key={`${x}${y}`} cx={x} cy={y} r="1.1" />))}
-                </svg>
-              </div>
-              {/* 横竖切换放在抓手后面第一个：工具条按左上角定位，切换后它基本还在原处，鼠标不用追着找
-                  （放最后的话一切换就跑到别处去了）。图标画的是切过去之后的样子 */}
-              <div className="flex items-center justify-center">
-                <TBtn onClick={() => setTb(p => ({ ...p, horiz: !p.horiz }))} title={tb.horiz ? "改成竖排" : "改成横排"}>
-                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
-                    {tb.horiz ? <rect x="8" y="3" width="8" height="18" rx="2" /> : <rect x="3" y="8" width="18" height="8" rx="2" />}
-                  </svg>
-                </TBtn>
-              </div>
-              <div className={tb.horiz ? "self-stretch border-l border-[#ffffff26] mx-0.5 my-1" : "border-t border-[#ffffff26] mx-1 my-0.5"} />
-              {[
-                ["area", IconArea, "退出框选（Esc）", "框选区域：拖一个框标注图、表或公式",
-                  <AreaStyleMenu key="m" value={areaStyle} onChange={setAreaStyle} dir={tb.horiz ? "down" : "right"} corner={!tb.horiz} />],
-                ["pen", IconPen, "退出画笔（Esc）", "画笔：在页面上手写（Ctrl+Z 撤销上一笔）",
-                  <PenMenu key="m" value={penStyle} onChange={setPenStyle} dir={tb.horiz ? "down" : "right"} corner={!tb.horiz} />],
-                ["eraser", IconEraser, "退出橡皮擦（Esc）", "橡皮擦：擦掉手写笔迹（高亮和框不受影响）"],
-                ["textbox", IconTextBox, "退出添加文本（Esc）", "添加文本：点页面放一个文本框"],
-                ["note", IconNote, "退出添加附注（Esc）", "添加附注：点页面放一个附注"],
-              ].map(([k, icon, offTitle, onTitle, menu]) => (
-                <div key={k} className={tb.horiz ? "flex items-center" : "relative flex justify-center"}>
-                  <TBtn onClick={() => { clearSel(); setTool(t => (t === k ? "text" : k)); }}
-                    active={tool === k} title={tool === k ? offTitle : onTitle}>
-                    <Icon d={icon} />
-                  </TBtn>
-                  {menu}
-                </div>
-              ))}
-            </div>
-            </div>
-          )}
           <div ref={containerRef}
             className={`absolute inset-0 overflow-auto overscroll-contain thin-scrollbar ${tool === "area" ? "rh-area-mode" : tool === "pen" ? "rh-area-mode rh-pen-mode" : tool === "eraser" ? "rh-area-mode rh-eraser-mode" : tool === "textbox" ? "rh-area-mode rh-textbox-mode" : tool === "note" ? "rh-area-mode rh-note-mode" : ""}`}>
             {/* pdf.js 往这个元素里插 / 删 .page，React 的东西不和它混在一起 */}
@@ -1728,50 +1777,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
                   }}
                   onOpenArxiv={(id) => chrome.runtime.sendMessage({ type: "viewer:open", url: `https://arxiv.org/pdf/${id}` })} />
               )}
-              {selPos && pending && (
-                <div className="rh-selbar">
-                  <SelectionBar pos={selPos}
-                    kind={areaPending ? "area" : markKind}
-                    onKind={areaPending ? null : pickMarkKind}
-                    defaultColor={areaPending ? areaStyle.color : null}
-                    onHighlight={(c) => saveAnchors(pending, areaPending
-                      ? { color: c, style: { dash: areaStyle.dash, width: areaStyle.width } }
-                      : { color: c, kind: markKind })}
-                    onNote={() => {
-                      setDraft({
-                        anchors: pending, page: pending[0].page, quote: pending[0].quote, body: "",
-                        kind: areaPending ? "area" : markKind, rects: pending[0].rects, tags: [],
-                      });
-                      clearSel();
-                    }}
-                    onTranslate={areaPending ? null : () => {
-                      const sel = window.getSelection();
-                      const rects = sel?.rangeCount ? sel.getRangeAt(0).getClientRects() : [];
-                      // manual：浏览器选区会被清掉，原文改由 TransMark 标出来，不然看不出翻的是哪段
-                      setTrans({ anchors: pending, text: pending[0].quote, manual: true,
-                                 pos: rects.length ? transPos(rects) : { ...selPos, below: false } });
-                      clearSel();
-                    }}
-                    onCancel={clearSel} />
-                </div>
-              )}
-              {trans?.manual && <TransMark anchors={trans.anchors} viewerEl={viewerElRef.current} zoom={zoom} />}
-              {(trans || transPin) && (
-                /* 钉住时 key 固定：换一段文字只是换内容，浮窗不重建（不闪、不丢位置） */
-                <TranslatePop key={transPin ? "pinned" : trans.text} text={trans?.text || ""} pos={trans?.pos}
-                  pinned={transPin} fixedPos={transFixed} onPin={pinTrans}
-                  onMove={(pos, done) => {
-                    // ref 立刻跟上：松手那一下比重渲染先到，读 state 会存成上一步的位置
-                    if (pos) { transFixedRef.current = pos; setTransFixed(pos); }
-                    if (done) localStorage.setItem("rh_trans_pos", JSON.stringify(transFixedRef.current));
-                  }}
-                  onClose={() => { if (transPin) pinTrans(false); setTrans(null); }}
-                  onSaveNote={async (translated) => {
-                    if (!trans) return;
-                    await saveAnchors(trans.anchors, { color: "yellow", kind: markKind, body: translated });
-                    if (!transPin) setTrans(null);
-                  }} />
-              )}
+              {renderSel("main")}
             </div>
           </div>
 
@@ -1831,12 +1837,63 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
             <div className="relative shrink-0 min-w-0 min-h-0" style={splitDir === "v" ? { height: `${splitFrac * 100}%` } : { width: `${splitFrac * 100}%` }}
               onPointerDownCapture={() => setActivePane("split")}>
               <SplitPane doc={doc} main={apiRef} apiRef={splitApiRef} annotations={visibleAnns}
+                containerRef={splitContainerRef} viewerElRef={splitViewerElRef} onOverlay={setSplitOverlay}
                 arxivId={paperKey.replace(/^arxiv:/, "")} eqCopy={settings.eqCopy}
-                onReady={setSplitReady} onView={setSplitView} />
+                onReady={setSplitReady} onView={setSplitView} onResize={() => refitBothRef.current()} />
+              {splitOverlay && createPortal(renderSel("split"), splitOverlay)}
               {activePane === "split" && <div className="rh-pane-active" />}
             </div>
           </>
         )}
+          {/* 标注工具条（顶栏放不下了）：浮在阅读区上（分屏时两栏都能放），能拖（抓手 ⠿）、能横竖切换，位置记在本机。
+              没拖过时竖排贴左边上下居中 / 横排贴顶边左右居中，左侧栏滑出来时跟着让开。
+              居中用一层不吃指针的 flex 外壳，**不用 translate(-50%)**：带 transform 的祖先会让里面
+              position:fixed 的下拉菜单改成相对它定位，菜单就跑到别处去了（踩过） */}
+          {doc && (
+            <div className={tb.pos ? "absolute z-[50] pointer-events-none"
+              : `absolute z-[50] flex pointer-events-none transition-[left] duration-200 ease-out
+                 ${tb.horiz ? "top-2.5 right-0 justify-center" : "inset-y-0 items-center"}`}
+              style={tb.pos ? { left: tb.pos.x, top: tb.pos.y } : { left: sideOpen ? 328 + 10 : 10 }}>
+            <div ref={tbRef}
+              className={`pointer-events-auto flex ${tb.horiz ? "flex-row items-center" : "flex-col items-stretch"} gap-0.5 p-1
+                          rounded-xl bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.4)]`}>
+              <div onPointerDown={dragTb} title="拖动工具条"
+                className={`flex items-center justify-center rounded-md cursor-move text-[#9a9a9a] hover:text-[#fff] hover:bg-[#ffffff1a]
+                            touch-none ${tb.horiz ? "w-3 self-stretch" : "h-3"}`}>
+                <svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor" style={{ transform: tb.horiz ? "rotate(90deg)" : "none" }}>
+                  {[2, 6, 10].flatMap(x => [4, 8].map(y => <circle key={`${x}${y}`} cx={x} cy={y} r="1.1" />))}
+                </svg>
+              </div>
+              {/* 横竖切换放在抓手后面第一个：工具条按左上角定位，切换后它基本还在原处，鼠标不用追着找
+                  （放最后的话一切换就跑到别处去了）。图标画的是切过去之后的样子 */}
+              <div className="flex items-center justify-center">
+                <TBtn onClick={() => setTb(p => ({ ...p, horiz: !p.horiz }))} title={tb.horiz ? "改成竖排" : "改成横排"}>
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+                    {tb.horiz ? <rect x="8" y="3" width="8" height="18" rx="2" /> : <rect x="3" y="8" width="18" height="8" rx="2" />}
+                  </svg>
+                </TBtn>
+              </div>
+              <div className={tb.horiz ? "self-stretch border-l border-[#ffffff26] mx-0.5 my-1" : "border-t border-[#ffffff26] mx-1 my-0.5"} />
+              {[
+                ["area", IconArea, "退出框选（Esc）", "框选区域：拖一个框标注图、表或公式",
+                  <AreaStyleMenu key="m" value={areaStyle} onChange={setAreaStyle} dir={tb.horiz ? "down" : "right"} corner={!tb.horiz} />],
+                ["pen", IconPen, "退出画笔（Esc）", "画笔：在页面上手写（Ctrl+Z 撤销上一笔）",
+                  <PenMenu key="m" value={penStyle} onChange={setPenStyle} dir={tb.horiz ? "down" : "right"} corner={!tb.horiz} />],
+                ["eraser", IconEraser, "退出橡皮擦（Esc）", "橡皮擦：擦掉手写笔迹（高亮和框不受影响）"],
+                ["textbox", IconTextBox, "退出添加文本（Esc）", "添加文本：点页面放一个文本框"],
+                ["note", IconNote, "退出添加附注（Esc）", "添加附注：点页面放一个附注"],
+              ].map(([k, icon, offTitle, onTitle, menu]) => (
+                <div key={k} className={tb.horiz ? "flex items-center" : "relative flex justify-center"}>
+                  <TBtn onClick={() => { clearSel(); setTool(t => (t === k ? "text" : k)); }}
+                    active={tool === k} title={tool === k ? offTitle : onTitle}>
+                    <Icon d={icon} />
+                  </TBtn>
+                  {menu}
+                </div>
+              ))}
+            </div>
+            </div>
+          )}
         </div>
 
         {rightOpen && commentKey && (
@@ -2000,9 +2057,7 @@ function ZoomMenu({ zoom, mode, onPick }) {
  * 打开时照抄主阅读区此刻的缩放方式（「适合宽度」这类按自己的栏宽重算）和看到的位置，一出来两栏一模一样。
  * 标注照样画出来（只看，点了不弹编辑条），公式旁的复制按钮也有；划选只能复制，加标注 / 翻译在主阅读区做。
  */
-function SplitPane({ doc, main, apiRef, annotations, arxivId, eqCopy, onReady, onView }) {
-  const containerRef = useRef(null);
-  const viewerElRef = useRef(null);
+function SplitPane({ doc, main, apiRef, containerRef, viewerElRef, onOverlay, annotations, arxivId, eqCopy, onReady, onView, onResize }) {
   const [ready, setReady] = useState(null);
 
   useEffect(() => {
@@ -2032,7 +2087,7 @@ function SplitPane({ doc, main, apiRef, annotations, arxivId, eqCopy, onReady, o
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
 
-  // 栏的尺寸变了（拖分隔条、换方向）：「适合宽度 / 页面」这类按新尺寸重算
+  // 栏的尺寸变了（拖分隔条、换方向）：交给外面两栏统一重算（两栏要一样大）
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -2040,8 +2095,7 @@ function SplitPane({ doc, main, apiRef, annotations, arxivId, eqCopy, onReady, o
     const ro = new ResizeObserver(() => {
       if (el.clientWidth === w && el.clientHeight === h) return;
       w = el.clientWidth; h = el.clientHeight;
-      const v = apiRef.current?.viewer;
-      if (v && /^(page-|auto)/.test(v.currentScaleValue)) v.currentScaleValue = v.currentScaleValue;
+      onResize();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -2055,6 +2109,8 @@ function SplitPane({ doc, main, apiRef, annotations, arxivId, eqCopy, onReady, o
     <div className="relative h-full bg-[#525659]">
       <div ref={containerRef} className="absolute inset-0 overflow-auto overscroll-contain thin-scrollbar">
         <div ref={viewerElRef} className="pdfViewer relative" />
+        {/* 浮层（同主阅读区）：划选工具条、译文弹窗由外面 portal 进来 */}
+        <div ref={onOverlay} className="absolute left-0 top-0 w-full h-0" />
       </div>
     </div>
   );
@@ -2143,5 +2199,55 @@ function PagePreview({ doc, dest, width, height }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** 分屏按钮旁的下拉：不分屏 / 左右分屏 / 上下分屏（样式同缩放比例的下拉） */
+function SplitMenu({ mode, disabled, onPick }) {
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+  useEffect(() => {
+    if (!pos) return;
+    const close = (e) => {
+      if (panelRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
+      setPos(null);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setPos(null); };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", onKey); };
+  }, [pos]);
+  const toggle = () => {
+    if (pos) { setPos(null); return; }
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 60, window.innerWidth - 170)) });
+  };
+  const items = [["off", "不分屏", <rect key="r" x="3" y="4" width="18" height="16" rx="2" />],
+                 ["h", "左右分屏", IconSplit], ["v", "上下分屏", IconSplitV]];
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} disabled={disabled} title="分屏方式"
+        className={`h-7 w-4 -ml-1 rounded-md flex items-center justify-center border-none shrink-0
+          ${disabled ? "text-[#ffffff4d] bg-transparent cursor-not-allowed"
+            : pos ? "text-[#fff] bg-[#ffffff33] cursor-pointer" : "text-[#c8c8c8] bg-transparent hover:bg-[#ffffff26] cursor-pointer"}`}>
+        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3"
+          strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {pos && (
+        <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
+          className="min-w-[150px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          {items.map(([v, label, icon]) => (
+            <button key={v} onClick={() => { onPick(v); setPos(null); }}
+              className="w-full h-8 flex items-center gap-2 pl-2 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
+                         border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap">
+              <span className="w-4 text-[#7ec8e3] text-[12px] text-center">{mode === v ? "✓" : ""}</span>
+              <Icon d={icon} size={15} />
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

@@ -42,6 +42,8 @@ body { font-family: theme("fontFamily.sans"); }
 /* 引用号整组一起高亮（PdfViewer 的链接预览：[1–10] 只有 1 和 10 是链接，指哪个都框住整个方括号）；这时单个链接自己的黄框不画 */
 .pdfViewer .page > .rh-cite-group { position: absolute; z-index: 3; pointer-events: none; opacity: 0.2; background: #ff0; box-shadow: 0 2px 10px #ff0; }
 .pdfViewer .annotationLayer .linkAnnotation > a.rh-grouped:hover { opacity: 0; }
+/* 设置里的「标出所有链接」：链接框底边一道淡蓝虚线（不改正文颜色；链接框本来就比字略大，线落在字下面） */
+.rh-show-links .pdfViewer .annotationLayer .linkAnnotation { border-bottom: 1.5px dashed rgba(40, 110, 230, 0.55); }
 
 /* 页面颜色（护眼模式，设置里选，见 lib/settings 的 PAPERS）。
    纸色：在画布上叠一层 multiply（正片叠底）—— 白 × 纸色 = 纸色，黑 × 纸色 = 黑，所以字还是原来的颜色，只有白底变了。

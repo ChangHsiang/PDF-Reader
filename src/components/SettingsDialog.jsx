@@ -167,6 +167,9 @@ export default function SettingsDialog({ onClose }) {
           <Row title="公式旁显示「复制 LaTeX」按钮" desc="带编号的公式左边一颗小按钮，复制的是 arXiv 源码里的 LaTeX（作者自定义的宏已展开）">
             <Switch on={s.eqCopy} onClick={() => setSettings({ eqCopy: !s.eqCopy })} />
           </Row>
+          <Row title="标出所有链接" desc="有的论文只给文献引用上色，公式 / 图 / 章节的引用看不出是链接。打开后所有链接下面画一道淡色虚线">
+            <Switch on={s.showLinks} onClick={() => setSettings({ showLinks: !s.showLinks })} />
+          </Row>
 
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">翻译</div>
           <Row title="选中文字后直接翻译" desc="不用再点工具条上的「翻译」，选完就在下面弹出译文">

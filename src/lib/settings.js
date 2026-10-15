@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
  *
  * - intercept：打开 arXiv PDF 时换成插件阅读器
  * - eqCopy：公式编号旁显示「复制 LaTeX」按钮
+ * - showLinks：所有链接下面画淡色虚线（作者没给链接上色时也看得出来）
  * - paper：页面颜色（护眼）white / green / sepia / gray / dark，见 PAPERS
  * - autoTranslate：选中文字后直接弹译文
  * - translateTarget：lib/translate 里 LANGS 的任一种语言代码
@@ -17,6 +18,7 @@ import { useEffect, useState } from "react";
 export const DEFAULT_SETTINGS = {
   intercept: true,
   eqCopy: true,
+  showLinks: false,
   paper: "white",
   autoTranslate: false,
   translateTarget: "zh",

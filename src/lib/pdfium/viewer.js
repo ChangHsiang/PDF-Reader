@@ -130,6 +130,12 @@ export class PdfiumViewer {
     }
   }
 
+  /** 直接定倍数，同时记住它是哪种「自动」方式（分屏时两栏要一样大：倍数由外面统一算好，见 PdfViewer 的 fitBoth） */
+  setScaleTo(scale, preset = null) {
+    this._scaleValue = preset || String(scale);
+    this._applyScale(scale, preset);
+  }
+
   _setScale(v) {
     const preset = typeof v === "string" && /^(page-|auto)/.test(v) ? v : null;
     const scale = this._resolve(v);
