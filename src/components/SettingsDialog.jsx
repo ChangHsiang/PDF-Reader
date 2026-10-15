@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSettings, setSettings, PAPERS } from "../lib/settings";
 import { viaCustom, LANGS } from "../lib/translate";
+import { useUpdate, openTab, openExtensionsPage } from "../lib/update";
 
 /**
  * 阅读器顶栏「设置」：阅读 + 翻译两组。
@@ -223,9 +224,63 @@ export default function SettingsDialog({ onClose }) {
               )}
             </div>
           )}
+
+          <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">版本</div>
+          <VersionSection btn={btn} />
         </div>
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** 设置 → 版本：当前版本、检查更新；有新版本时给下载 / 更新说明 / 忽略此版本，以及升级步骤 */
+function VersionSection({ btn }) {
+  const u = useUpdate();
+  const ghost = `${btn} text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a]`;
+  const date = u.latest?.publishedAt ? new Date(u.latest.publishedAt).toLocaleDateString() : "";
+  return (
+    <div className="flex flex-col gap-2 pb-3 text-[12.5px] text-[#c8c8c8]">
+      <div className="flex items-center gap-2">
+        <span className="flex-1">
+          当前版本 <b className="text-[#fff]">v{u.current}</b>
+          {u.checking ? <span className="ml-2 text-[#9a9a9a]">正在检查…</span>
+            : u.error ? <span className="ml-2 text-[#ff9a9a]">检查失败：{u.error}</span>
+            : u.latest && !u.hasNew ? <span className="ml-2 text-[#7ee3a0]">已是最新</span> : null}
+        </span>
+        <button onClick={u.check} disabled={u.checking} className={`${ghost} disabled:opacity-50`} style={{ border: "1px solid #ffffff33" }}>检查更新</button>
+      </div>
+      {u.hasNew && (
+        <div className="rounded-md bg-[#7ec8e314] border border-[#7ec8e340] px-3 py-2.5 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="flex-1 text-[#fff] font-bold">
+              有新版本 v{u.latest.version}
+              {date && <span className="ml-2 font-normal text-[11.5px] text-[#9a9a9a]">{date}</span>}
+              {u.ignored === u.latest.version && <span className="ml-2 font-normal text-[11.5px] text-[#9a9a9a]">（已忽略）</span>}
+            </span>
+          </div>
+          {u.latest.notes && (
+            <div className="max-h-[140px] overflow-y-auto thin-scrollbar whitespace-pre-wrap text-[12px] leading-relaxed text-[#c8c8c8]">
+              {/* 更新说明是 Markdown：标题的 # 去掉、列表的 - 换成圆点、**粗体** 和 `代码` 的记号去掉，纯文字显示 */}
+              {u.latest.notes.replace(/\r/g, "").replace(/^#+\s*/gm, "").replace(/^(\s*)[-*]\s+/gm, "$1• ")
+                .replace(/\*\*(.+?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1")}
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button onClick={() => openTab(u.latest.zip)} className={`${btn} font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea]`}>下载</button>
+            <button onClick={() => openTab(u.latest.url)} className={ghost} style={{ border: "1px solid #ffffff33" }}>更新说明</button>
+            <span className="flex-1" />
+            {u.ignored === u.latest.version
+              ? <button onClick={u.unignore} className={ghost}>取消忽略</button>
+              : <button onClick={u.ignore} className={ghost}>忽略此版本</button>}
+          </div>
+          <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
+            升级：下载后解压，把里面的文件覆盖到原来加载插件的那个文件夹，再到
+            <button onClick={openExtensionsPage} className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[11.5px]">扩展管理页</button>
+            点这个插件卡片上的刷新按钮。笔记都存在浏览器里，不会丢。
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

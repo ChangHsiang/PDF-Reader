@@ -19,6 +19,7 @@ import PaperComments from "./PaperComments";
 import RefCard from "./RefCard";
 import TranslatePop from "./TranslatePop";
 import SettingsDialog from "./SettingsDialog";
+import { useUpdate, openTab } from "../lib/update";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey } from "../lib/refs";
@@ -282,6 +283,11 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const transPosRef = useRef(transPos);
   transPosRef.current = transPos;
   const settings = useSettings();
+  /* 新版本检测（lib/update）：一天最多查一次 GitHub。卡片点 ✕ 是「这次先不提示」，记在这个标签页里 */
+  const upd = useUpdate();
+  const [updLater, setUpdLater] = useState(() => {
+    try { return !!sessionStorage.getItem("rh_upd_later"); } catch { return false; }
+  });
   // 公式旁的「复制 LaTeX」按钮（components/EqCopy.js）
   useEquationCopy(viewerElRef, apiRef, doc, paperKey.replace(/^arxiv:/, ""), settings.eqCopy);
   const autoTransRef = useRef(false);
@@ -1785,7 +1791,11 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         <TBtn onClick={download} title="下载 PDF" disabled={!doc}><Icon d={IconDownload} /></TBtn>
         <TBtn onClick={openRaw} title="用浏览器自带的阅读器打开原文件"><Icon d={IconOpen} /></TBtn>
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
-        <TBtn onClick={() => setSettingsOpen(true)} title="设置"><Icon d={IconGear} /></TBtn>
+        <div className="relative">
+          <TBtn onClick={() => setSettingsOpen(true)} title={upd.show ? `设置（有新版本 v${upd.latest.version}）` : "设置"}><Icon d={IconGear} /></TBtn>
+          {/* 有新版本（没被忽略）：设置按钮上一个小红点 */}
+          {upd.show && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#ff5c5c] pointer-events-none" />}
+        </div>
         <SyncBadge uid={uid} state={sync} pending={pendingCount} onLogin={onLogin} onSync={runSync} />
         {commentKey && (
           <TBtn onClick={() => setRightOpen(v => !v)} active={rightOpen} title="论文评论（和 ResearchHub 网站互通）">
@@ -1883,6 +1893,31 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
           </div>
 
           {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+          {/* 新版本提示（右下角一张小卡片）：下载 / 看更新说明 / 忽略此版本；✕ 只是这次先不提示，下次打开还会出来 */}
+          {upd.show && !updLater && (
+            <div className="absolute right-4 bottom-4 z-[60] w-[300px] p-3 rounded-lg bg-[#323639] border border-[#ffffff26]
+                            shadow-[0_8px_24px_rgba(0,0,0,0.45)] text-[12.5px] font-sans text-[#e6e6e6] animate-fade-in">
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <div className="font-bold text-[#fff]">PDF-Reader 有新版本 v{upd.latest.version}</div>
+                  <div className="text-[11.5px] text-[#9a9a9a] mt-0.5">当前 v{upd.current}。下载后解压覆盖原来的文件夹，在扩展管理页点刷新（设置 → 版本里有步骤）</div>
+                </div>
+                <button onClick={() => { setUpdLater(true); try { sessionStorage.setItem("rh_upd_later", upd.latest.version); } catch { /* 无痕 */ } }}
+                  title="先不提示（下次打开还会提示）"
+                  className="w-6 h-6 -mt-0.5 -mr-1 rounded-md text-[#c8c8c8] bg-transparent border-none cursor-pointer hover:bg-[#ffffff26]">✕</button>
+              </div>
+              <div className="flex items-center gap-1.5 mt-2.5">
+                <button onClick={() => openTab(upd.latest.zip)}
+                  className="h-7 px-3 rounded-full text-[12px] font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea] border-none cursor-pointer">下载</button>
+                <button onClick={() => openTab(upd.latest.url)}
+                  className="h-7 px-3 rounded-full text-[12px] text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a] cursor-pointer"
+                  style={{ border: "1px solid #ffffff33" }}>更新说明</button>
+                <span className="flex-1" />
+                <button onClick={upd.ignore}
+                  className="h-7 px-2 rounded-md text-[12px] text-[#9a9a9a] bg-transparent border-none cursor-pointer hover:text-[#e6e6e6] hover:bg-[#ffffff1a]">忽略此版本</button>
+              </div>
+            </div>
+          )}
           {findOpen && (
             <div className="absolute top-2 right-4 z-30 flex items-center gap-1 p-2 rounded-lg
                             bg-[#323639] border border-[#ffffff1f] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
