@@ -108,3 +108,6 @@ body { font-family: theme("fontFamily.sans"); }
   opacity: 0.45; cursor: pointer; pointer-events: auto; transition: opacity .12s, background .12s;
 }
 .rh-eq-btn:hover { opacity: 1; background: rgba(27, 79, 114, 0.16); }
+
+/* 分屏时「当前这一栏」（顶栏的页码 / 缩放 / 搜索作用于它）：内侧一道细蓝边。不吃指针、盖在最上层 */
+.rh-pane-active { position: absolute; inset: 0; pointer-events: none; z-index: 60; box-shadow: inset 0 0 0 2px rgba(74, 144, 217, 0.85); }

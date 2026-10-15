@@ -70,8 +70,7 @@ const IconNotes = <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L
 const IconGear = <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>;
 const IconNote = <><path d="M20 15.5a1.5 1.5 0 0 1-1.5 1.5H8.5L4 20.5V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5z" /><path d="M8 8.5h8M8 12.5h5" /></>;
 const IconSplit = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="12" y1="4" x2="12" y2="20" /></>;
-const IconSplitV = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="12" x2="21" y2="12" /></>;
-const IconFitWidth = <><polyline points="7 8 3 12 7 16" /><polyline points="17 8 21 12 17 16" /><line x1="3" y1="12" x2="21" y2="12" /></>;
+const IconRotate = <><path d="M20 11a8 8 0 1 0-2.3 5.7" /><polyline points="20 4 20 10 14 10" /></>;
 const IconChat = <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />;
 
 const TBtn = ({ onClick, title, disabled, active, children }) => (
@@ -138,6 +137,13 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const containerRef = useRef(null);
   const viewerElRef = useRef(null);
   const apiRef = useRef(null);        // { viewer, linkService, eventBus }
+  /* 分屏（SplitPane）开没开 */
+  const [splitOpen, setSplitOpen] = useState(false);
+  /* 只有一个工具栏（同 Zotero）：页码 / 缩放 / 搜索 / 目录 / 缩略图都作用于「最后点过的那一栏」 */
+  const [activePane, setActivePane] = useState("main");
+  const splitApiRef = useRef(null);
+  const [splitReady, setSplitReady] = useState(false);
+  const [splitView, setSplitView] = useState({ page: 1, zoom: 1, mode: null });
 
   // doc 必须进 state（缩略图栏在渲染期用它，读 ref 不会触发重渲染）
   const [doc, setDoc] = useState(null);
@@ -424,13 +430,14 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    let w = el.clientWidth;
+    let w = el.clientWidth, h = el.clientHeight;
     const ro = new ResizeObserver(() => {
-      const next = el.clientWidth;
-      if (next === w) return;
-      w = next;
+      if (el.clientWidth === w && el.clientHeight === h) return;
+      const onlyH = el.clientWidth === w;
+      w = el.clientWidth; h = el.clientHeight;
       const v = apiRef.current?.viewer.currentScaleValue;
-      if (v === "page-width" || v === "auto" || v === "page-fit" || v === "page-actual") {
+      // 只是高度变了（上下分屏、拖分隔条）：只有「适合页面 / 高度」要重算
+      if (onlyH ? (v === "page-fit" || v === "page-height") : (v === "page-width" || v === "auto" || v === "page-fit" || v === "page-actual")) {
         apiRef.current.viewer.currentScaleValue = v;
       }
     });
@@ -438,39 +445,51 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     return () => ro.disconnect();
   }, []);
 
+  const [scaleMode, setScaleMode] = useState("page-actual");   // 当前是不是某个自动倍数（下拉菜单打勾用）
+  /* 顶栏操作的是哪一栏：分屏时是最后点过的那一栏（见 activePane） */
+  const onSplit = splitOpen && activePane === "split" && splitReady;
+  const act = () => (onSplit && splitApiRef.current) || apiRef.current;
+  const vPage = onSplit ? splitView.page : page;
+  const vZoom = onSplit ? splitView.zoom : zoom;
+  const vMode = onSplit ? splitView.mode : scaleMode;
+
   /* 缩放输入框：10%–500%，非法输入还原 */
   const [zoomInput, setZoomInput] = useState("100");
   const zoomEditingRef = useRef(false);
-  useEffect(() => { if (!zoomEditingRef.current) setZoomInput(String(Math.round(zoom * 100))); }, [zoom]);
+  useEffect(() => { if (!zoomEditingRef.current) setZoomInput(String(Math.round(vZoom * 100))); }, [vZoom]);
   const commitZoomInput = () => {
     const n = parseInt(zoomInput, 10);
     if (Number.isFinite(n) && n > 0) setScale(Math.min(500, Math.max(10, n)) / 100);
-    setZoomInput(String(Math.round(zoom * 100)));
+    setZoomInput(String(Math.round(vZoom * 100)));
   };
-  const [scaleMode, setScaleMode] = useState("page-actual");   // 当前是不是某个自动倍数（下拉菜单打勾用）
-  const setScale = (v) => { const a = apiRef.current; if (a) a.viewer.currentScaleValue = String(v); };
+  const setScale = (v) => { const a = act(); if (a) a.viewer.currentScaleValue = String(v); };
   const stepZoom = (dir) => {
-    const i = ZOOMS.findIndex(z => z > zoom + 0.001);
+    const i = ZOOMS.findIndex(z => z > vZoom + 0.001);
     const next = dir > 0
       ? ZOOMS[i === -1 ? ZOOMS.length - 1 : i]
       : ZOOMS[Math.max(0, (i === -1 ? ZOOMS.length : i) - 2)];
     setScale(next);
   };
   const goPage = (n) => {
+    const a = act();
+    if (a && n >= 1 && n <= total) a.viewer.currentPageNumber = n;
+  };
+  // 跳到某条标注：标注的编辑都在主阅读区，总是跳主阅读区
+  const goPageMain = (n) => {
     const a = apiRef.current;
     if (a && n >= 1 && n <= total) a.viewer.currentPageNumber = n;
   };
   // 页码输入框用本地 state：滚动会不停改 page，直接绑的话打到一半就被覆盖
   const [pageInput, setPageInput] = useState("");
   const editingRef = useRef(false);
-  useEffect(() => { if (!editingRef.current) setPageInput(String(page)); }, [page]);
+  useEffect(() => { if (!editingRef.current) setPageInput(String(vPage)); }, [vPage]);
   const commitPageInput = () => {
     const n = parseInt(pageInput, 10);
     const ok = Number.isFinite(n) && n >= 1 && n <= total;
     if (ok) goPage(n);
-    setPageInput(String(ok ? n : page));
+    setPageInput(String(ok ? n : vPage));
   };
-  const goDest = (dest) => apiRef.current?.linkService.goToDestination(dest);
+  const goDest = (dest) => act()?.linkService.goToDestination(dest);
 
   /* ── 划选 → 工具条（放进 .pdfViewer 的内容坐标里，跟着页面滚） ── */
   useEffect(() => {
@@ -1136,7 +1155,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
 
   const goAnn = (a) => {
     setActiveId(a.id);
-    goPage(a.page);
+    goPageMain(a.page);
     // 页面是懒渲染的，跳过去那一刻高亮还不存在 —— 等几帧再滚
     let tries = 0;
     const tick = () => {
@@ -1218,7 +1237,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const findInputRef = useRef(null);
   const [findCount, setFindCount] = useState(null);   // { current, total } | null
   const runFind = useCallback((q, again, prev = false) => {
-    apiRef.current?.eventBus.dispatch("find", {
+    act()?.eventBus.dispatch("find", {
       source: window, type: again ? "again" : "", query: q,
       caseSensitive: false, entireWord: false, highlightAll: true, findPrevious: prev,
     });
@@ -1231,17 +1250,20 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const closeFind = useCallback(() => {
     setFindOpen(false);
     setFindCount(null);
-    apiRef.current?.eventBus.dispatch("findbarclose", { source: window });   // 清掉正文里的命中高亮
+    // 清掉正文里的命中高亮（两栏都清）
+    [apiRef.current, splitApiRef.current].forEach(a => a?.eventBus.dispatch("findbarclose", { source: window }));
   }, []);
   useEffect(() => {
-    const bus = apiRef.current?.eventBus;
+    // 两栏的搜索各自独立：只听当前那一栏的计数
+    const bus = act()?.eventBus;
     if (!bus) return;
     const onCount = ({ matchesCount }) => matchesCount && setFindCount({ ...matchesCount });
     const onState = ({ matchesCount }) => matchesCount && setFindCount({ ...matchesCount });
     bus.on("updatefindmatchescount", onCount);
     bus.on("updatefindcontrolstate", onState);
     return () => { bus.off("updatefindmatchescount", onCount); bus.off("updatefindcontrolstate", onState); };
-  }, [doc]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, onSplit]);
 
   // Ctrl/⌘+F 打开文档内搜索（不然会落到浏览器的页面搜索，搜不到没渲染的页）
   useEffect(() => {
@@ -1257,17 +1279,22 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
      由上面的 ResizeObserver 跟着重排；全屏的尺寸变化是异步的，再补一次保险 */
   const readerRef = useRef(null);
   /* 分屏（SplitPane）：左右（h）或上下（v）。第二栏占整个阅读区域的比例，拖中间的分隔条改；方向和比例记在本机 */
-  const [splitOpen, setSplitOpen] = useState(false);
   const [splitDir, setSplitDir] = useState(() => { try { return localStorage.getItem("rh_split_dir") === "v" ? "v" : "h"; } catch { return "h"; } });
-  const flipSplit = () => setSplitDir(d => {
-    const n = d === "h" ? "v" : "h";
+  const flipSplit = () => {
+    const n = splitDir === "h" ? "v" : "h";
     try { localStorage.setItem("rh_split_dir", n); } catch { /* 存不了就算了 */ }
-    return n;
-  });
-  /* 开分屏时左边（主阅读区）改成「适合宽度」：栏变窄了，原来的固定倍数多半要横向滚动。
-     先设上，容器缩窄之后 ResizeObserver 还会按新宽度再算一次 */
+    setSplitDir(n);
+    // 换方向时两栏都换成对应的「适合」方式
+    [apiRef.current, splitApiRef.current].forEach(a => { if (a) a.viewer.currentScaleValue = fitFor(n); });
+    // 栏的尺寸要等这一帧排完才变（ResizeObserver 会再算一次倍数）；之后各自对齐到当前这一页的页首，不停在两页中间
+    setTimeout(() => [apiRef.current, splitApiRef.current].forEach(a => a?.viewer.scrollToPage(a.viewer.currentPageNumber)), 120);
+  };
+  /* 开分屏时主阅读区改成「适合宽度」（左右分）/「适合页面」（上下分：一栏只有半屏高，按宽度撑满就只露半页）。
+     先设上，容器缩窄之后 ResizeObserver 还会按新尺寸再算一次。第二栏照抄主阅读区此刻的缩放方式和位置（SplitPane） */
+  const fitFor = (dir) => (dir === "v" ? "page-fit" : "page-width");
   const toggleSplit = () => {
-    if (!splitOpen && apiRef.current) apiRef.current.viewer.currentScaleValue = "page-width";
+    if (!splitOpen && apiRef.current) apiRef.current.viewer.currentScaleValue = fitFor(splitDir);
+    if (splitOpen) setActivePane("main");
     setSplitOpen(v => !v);
   };
   const [splitFrac, setSplitFrac] = useState(() => {
@@ -1386,8 +1413,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
           </div>
         </div>
         <div className="shrink-0 flex items-center gap-1">
-        <TBtn onClick={() => goPage(page - 1)} title="上一页" disabled={page <= 1}><Icon d={IconUp} /></TBtn>
-        <TBtn onClick={() => goPage(page + 1)} title="下一页" disabled={page >= total}><Icon d={IconDown} /></TBtn>
+        <TBtn onClick={() => goPage(vPage - 1)} title="上一页" disabled={vPage <= 1}><Icon d={IconUp} /></TBtn>
+        <TBtn onClick={() => goPage(vPage + 1)} title="下一页" disabled={vPage >= total}><Icon d={IconDown} /></TBtn>
         {doc ? (
           <div className="flex items-center gap-1 px-0.5 shrink-0 text-[11.5px] font-sans tabular-nums">
             <input value={pageInput} inputMode="numeric" aria-label="跳转到指定页" title="输入页码后回车跳转"
@@ -1398,7 +1425,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
               onKeyDown={(e) => {
                 e.stopPropagation();
                 if (e.key === "Enter") e.currentTarget.blur();
-                if (e.key === "Escape") { setPageInput(String(page)); e.currentTarget.blur(); }
+                if (e.key === "Escape") { setPageInput(String(vPage)); e.currentTarget.blur(); }
               }}
               className="text-center bg-transparent rounded px-0.5 py-px outline-none border border-transparent
                          text-[#e6e6e6] tabular-nums hover:border-[#ffffff40] focus:border-[#ffffff80] focus:bg-[#00000059]" />
@@ -1406,8 +1433,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
           </div>
         ) : <span className="text-[11.5px] text-[#e6e6e6] font-sans px-1 shrink-0">…</span>}
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
-        <TBtn onClick={() => stepZoom(-1)} title="缩小" disabled={zoom <= ZOOMS[0]}><Icon d={IconMinus} /></TBtn>
-        <TBtn onClick={() => stepZoom(1)} title="放大" disabled={zoom >= ZOOMS[ZOOMS.length - 1]}><Icon d={IconPlus} /></TBtn>
+        <TBtn onClick={() => stepZoom(-1)} title="缩小" disabled={vZoom <= ZOOMS[0]}><Icon d={IconMinus} /></TBtn>
+        <TBtn onClick={() => stepZoom(1)} title="放大" disabled={vZoom >= ZOOMS[ZOOMS.length - 1]}><Icon d={IconPlus} /></TBtn>
         {/* 缩放比例可直接输入（同页码框：本地 state，滚轮 / 按钮改了倍数时不在输入就跟着变） */}
         <div className="flex items-center shrink-0 text-[11.5px] font-sans tabular-nums text-[#e6e6e6]">
           <input value={zoomInput} aria-label="缩放比例" title="输入百分比后回车"
@@ -1418,13 +1445,13 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === "Enter") e.currentTarget.blur();
-              if (e.key === "Escape") { setZoomInput(String(Math.round(zoom * 100))); e.currentTarget.blur(); }
+              if (e.key === "Escape") { setZoomInput(String(Math.round(vZoom * 100))); e.currentTarget.blur(); }
             }}
             className="text-right bg-transparent rounded px-0.5 py-px outline-none border border-transparent text-[#e6e6e6]
                        tabular-nums hover:border-[#ffffff40] focus:border-[#ffffff80] focus:bg-[#00000059]" />
           <span className="pr-0.5">%</span>
         </div>
-        <ZoomMenu zoom={zoom} mode={scaleMode} onPick={setScale} />
+        <ZoomMenu zoom={vZoom} mode={vMode} onPick={setScale} />
         </div>
 
         <div className="flex-1 basis-0 min-w-0 flex items-center justify-end gap-1">
@@ -1432,6 +1459,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         <TBtn onClick={() => (findOpen ? closeFind() : openFind())} title="搜索（Ctrl+F）" active={findOpen}><Icon d={IconSearch} /></TBtn>
         <TBtn onClick={toggleSplit} title={splitOpen ? "关闭分屏" : "分屏：右边再开一个阅读区看同一篇（各自滚动、缩放）"}
           active={splitOpen} disabled={!doc}><Icon d={IconSplit} /></TBtn>
+        {splitOpen && (
+          <TBtn onClick={flipSplit} title={splitDir === "v" ? "改成左右分屏" : "改成上下分屏"}><Icon d={IconRotate} /></TBtn>
+        )}
         <TBtn onClick={enterFullscreen} title="全屏阅读（Esc 退出）" disabled={!doc}><Icon d={IconFull} /></TBtn>
         <TBtn onClick={download} title="下载 PDF" disabled={!doc}><Icon d={IconDownload} /></TBtn>
         <TBtn onClick={openRaw} title="用浏览器自带的阅读器打开原文件"><Icon d={IconOpen} /></TBtn>
@@ -1494,14 +1524,16 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
                   : outline.length === 0 ? <div className="px-3 py-3 text-[12px] text-[#b8b8b8] font-sans leading-relaxed">这份 PDF 没有内置章节目录</div>
                   /* 只有一个顶层节点（多半是论文标题）时直接展开，不然一打开目录就只看到一行 */
                   : outline.map((n, i) => <OutlineNode key={i} node={n} depth={0} onGo={goDest} defaultOpen={outline.length === 1} />)
-                ) : <Thumbs doc={doc} total={total} page={page} onGo={goPage} />}
+                ) : <Thumbs doc={doc} total={total} page={vPage} onGo={goPage} />}
               </div>
             )}
           </div>
         </aside>
 
         <div ref={splitRowRef} className={`relative flex-1 min-w-0 min-h-0 flex ${splitOpen && splitDir === "v" ? "flex-col" : ""}`}>
-        <div ref={readerRef} className="relative flex-1 min-w-0 min-h-0 bg-[#525659]">
+        <div ref={readerRef} className="relative flex-1 min-w-0 min-h-0 bg-[#525659]"
+          onPointerDownCapture={() => setActivePane("main")}>
+          {splitOpen && activePane === "main" && <div className="rh-pane-active" />}
           {/* 标注工具条（顶栏放不下了）：浮在阅读区上，能拖（抓手 ⠿）、能横竖切换，位置记在本机。
               没拖过时竖排贴左边上下居中 / 横排贴顶边左右居中，左侧栏滑出来时跟着让开。
               居中用一层不吃指针的 flex 外壳，**不用 translate(-50%)**：带 transform 的祖先会让里面
@@ -1694,9 +1726,12 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
             <div onPointerDown={dragSplit} title={splitDir === "v" ? "拖动调整高度" : "拖动调整宽度"}
               className={`shrink-0 bg-[#2a2c2e] hover:bg-[#4a90d9] active:bg-[#4a90d9] transition-colors touch-none
                 ${splitDir === "v" ? "h-1.5 cursor-row-resize" : "w-1.5 cursor-col-resize"}`} />
-            <div className="shrink-0 min-w-0 min-h-0" style={splitDir === "v" ? { height: `${splitFrac * 100}%` } : { width: `${splitFrac * 100}%` }}>
-              <SplitPane doc={doc} startPage={page} annotations={visibleAnns} dir={splitDir} onFlip={flipSplit}
-                arxivId={paperKey.replace(/^arxiv:/, "")} eqCopy={settings.eqCopy} onClose={() => setSplitOpen(false)} />
+            <div className="relative shrink-0 min-w-0 min-h-0" style={splitDir === "v" ? { height: `${splitFrac * 100}%` } : { width: `${splitFrac * 100}%` }}
+              onPointerDownCapture={() => setActivePane("split")}>
+              <SplitPane doc={doc} main={apiRef} apiRef={splitApiRef} annotations={visibleAnns}
+                arxivId={paperKey.replace(/^arxiv:/, "")} eqCopy={settings.eqCopy}
+                onReady={setSplitReady} onView={setSplitView} />
+              {activePane === "split" && <div className="rh-pane-active" />}
             </div>
           </>
         )}
@@ -1857,91 +1892,67 @@ function ZoomMenu({ zoom, mode, onPick }) {
 }
 
 /**
- * 分屏：右边再开一个阅读区看同一篇，自己滚、自己缩放（比如左边读正文，右边停在某张图 / 公式 / 参考文献那页）。
- * 和左边共用同一个 PDFium 文档（Worker 里只解析一次），只是另起一个 PdfiumViewer。
- * 标注照样画出来（只看，点了不弹编辑条），公式旁的复制按钮也有；划选只能复制，加标注 / 翻译在左边做。
- * 里面的链接（引用号、章节、公式）在右边自己跳。
+ * 分屏的第二栏：再开一个阅读区看同一篇，自己滚、自己缩放（比如一栏读正文，另一栏停在某张图 / 公式 / 参考文献那页）。
+ * 和主阅读区共用同一个 PDFium 文档（Worker 里只解析一次），只是另起一个 PdfiumViewer。
+ * 没有自己的工具栏（同 Zotero）：顶栏作用于最后点过的那一栏，这里只把页码 / 缩放报上去（onView），把 api 交出去（apiRef）。
+ * 打开时照抄主阅读区此刻的缩放方式（「适合宽度」这类按自己的栏宽重算）和看到的位置，一出来两栏一模一样。
+ * 标注照样画出来（只看，点了不弹编辑条），公式旁的复制按钮也有；划选只能复制，加标注 / 翻译在主阅读区做。
  */
-function SplitPane({ doc, startPage, annotations, dir, onFlip, arxivId, eqCopy, onClose }) {
+function SplitPane({ doc, main, apiRef, annotations, arxivId, eqCopy, onReady, onView }) {
   const containerRef = useRef(null);
   const viewerElRef = useRef(null);
-  const apiRef = useRef(null);
   const [ready, setReady] = useState(null);
-  const [page, setPage] = useState(startPage || 1);
-  const [zoom, setZoom] = useState(1);
-  const [pageInput, setPageInput] = useState(String(startPage || 1));
-  const editingRef = useRef(false);
-  useEffect(() => { if (!editingRef.current) setPageInput(String(page)); }, [page]);
 
   useEffect(() => {
     if (!doc) return;
     const eventBus = new EventBus();
     const viewer = new PdfiumViewer({ container: containerRef.current, viewer: viewerElRef.current, eventBus });
-    eventBus.on("pagechanging", (e) => setPage(e.pageNumber));
-    eventBus.on("scalechanging", (e) => setZoom(e.scale));
+    const report = () => onView({ page: viewer.currentPageNumber, zoom: viewer.currentScale,
+                                  mode: /^(page-|auto)/.test(viewer.currentScaleValue) ? viewer.currentScaleValue : null });
+    eventBus.on("pagechanging", report);
+    eventBus.on("scalechanging", report);
     viewer.setDocument(doc);
-    viewer.currentScaleValue = "page-width";
-    viewer.scrollToPage(startPage || 1);
+    const m = main.current?.viewer;
+    viewer.currentScaleValue = m?.currentScaleValue || "page-width";
+    // 位置：主阅读区顶上那一页、往下滚了这一页的几成
+    const at = m?._anchor();
+    if (at) {
+      const v = viewer.views[at.index];
+      containerRef.current.scrollTop = v.div.offsetTop + at.frac * v.div.offsetHeight;
+      containerRef.current.scrollLeft = m.container.scrollLeft;
+      viewer.update();
+    }
+    report();
     apiRef.current = { viewer, linkService: makeLinkService(viewer), eventBus };
     setReady(doc);
-    return () => { apiRef.current = null; setReady(null); viewer.destroy(); };
+    onReady(true);
+    return () => { apiRef.current = null; setReady(null); onReady(false); viewer.destroy(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
 
-  // 拖分隔条改了宽度：「适合宽度」时跟着重排
+  // 栏的尺寸变了（拖分隔条、换方向）：「适合宽度 / 页面」这类按新尺寸重算
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    let w = el.clientWidth;
+    let w = el.clientWidth, h = el.clientHeight;
     const ro = new ResizeObserver(() => {
-      if (el.clientWidth === w) return;
-      w = el.clientWidth;
+      if (el.clientWidth === w && el.clientHeight === h) return;
+      w = el.clientWidth; h = el.clientHeight;
       const v = apiRef.current?.viewer;
-      if (v?.currentScaleValue === "page-width") v.currentScaleValue = "page-width";
+      if (v && /^(page-|auto)/.test(v.currentScaleValue)) v.currentScaleValue = v.currentScaleValue;
     });
     ro.observe(el);
     return () => ro.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useHighlightLayer(viewerElRef, apiRef, ready, annotations, { onPick: useCallback(() => {}, []) });
   useEquationCopy(viewerElRef, apiRef, ready, arxivId, eqCopy);
 
-  const total = doc?.numPages || 0;
-  const setScale = (v) => { if (apiRef.current) apiRef.current.viewer.currentScaleValue = String(v); };
-  const stepZoom = (dir) => {
-    const i = ZOOMS.findIndex(z => z > zoom + 0.001);
-    setScale(dir > 0 ? ZOOMS[i === -1 ? ZOOMS.length - 1 : i] : ZOOMS[Math.max(0, (i === -1 ? ZOOMS.length : i) - 2)]);
-  };
-  const commitPage = () => {
-    const n = parseInt(pageInput, 10);
-    if (Number.isFinite(n) && n >= 1 && n <= total) apiRef.current?.viewer.scrollToPage(n);
-    else setPageInput(String(page));
-  };
-
   return (
-    <div className="relative h-full flex flex-col bg-[#525659]">
-      <div className="shrink-0 h-9 flex items-center gap-1 px-1.5 bg-[#323639] border-b border-[#00000040] text-[12px] text-[#e6e6e6] font-sans">
-        <input value={pageInput} aria-label="分屏页码" style={{ width: "3ch" }}
-          onFocus={(e) => { editingRef.current = true; e.target.select(); }}
-          onBlur={() => { editingRef.current = false; commitPage(); }}
-          onChange={(e) => setPageInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
-          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); }}
-          className="text-right bg-transparent rounded px-0.5 py-px outline-none border border-transparent text-[#e6e6e6]
-                     tabular-nums hover:border-[#ffffff40] focus:border-[#ffffff80] focus:bg-[#00000059]" />
-        <span className="text-[#c8c8c8] tabular-nums">/ {total}</span>
-        <div className="h-4 border-l border-[#ffffff26] mx-1" />
-        <TBtn onClick={() => stepZoom(-1)} title="缩小"><Icon d={IconMinus} /></TBtn>
-        <span className="w-10 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
-        <TBtn onClick={() => stepZoom(1)} title="放大"><Icon d={IconPlus} /></TBtn>
-        <TBtn onClick={() => setScale("page-width")} title="适合宽度"><Icon d={IconFitWidth} /></TBtn>
-        <div className="flex-1" />
-        <TBtn onClick={onFlip} title={dir === "v" ? "改成左右分屏" : "改成上下分屏"}><Icon d={dir === "v" ? IconSplit : IconSplitV} /></TBtn>
-        <TBtn onClick={onClose} title="关闭分屏"><Icon d={<><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></>} /></TBtn>
-      </div>
-      <div className="relative flex-1 min-h-0">
-        <div ref={containerRef} className="absolute inset-0 overflow-auto overscroll-contain thin-scrollbar">
-          <div ref={viewerElRef} className="pdfViewer relative" />
-        </div>
+    <div className="relative h-full bg-[#525659]">
+      <div ref={containerRef} className="absolute inset-0 overflow-auto overscroll-contain thin-scrollbar">
+        <div ref={viewerElRef} className="pdfViewer relative" />
       </div>
     </div>
   );
