@@ -175,7 +175,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     if (sc > 0) vs.forEach(x => x.setScaleTo(sc, preset));
   };
   const refitBoth = () => {
-    if (!splitLiveRef.current) return;          // 正在关分屏：第二栏拆掉时它的 ResizeObserver 还会来一次，别再统一倍数
+    if (!splitLiveRef.current) return;          // 正在关分屏：别再统一倍数
     const v = apiRef.current?.viewer.currentScaleValue;
     if (v && /^(page-|auto)/.test(v)) fitBoth(v);
   };
@@ -519,7 +519,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
       if (el.clientWidth === w && el.clientHeight === h) return;
       const onlyH = el.clientWidth === w;
       w = el.clientWidth; h = el.clientHeight;
-      if (splitLiveRef.current) { refitBothRef.current(); return; }
+      /* 分屏时栏的尺寸变了（拖分隔条）不重算倍数（同 Zotero）：页面大小不变，只是一栏露出的多一点 / 少一点。
+         只在打开分屏、换方向、进出全屏时两栏统一算一次（fitBoth） */
+      if (splitLiveRef.current) return;
       const v = apiRef.current?.viewer.currentScaleValue;
       // 只是高度变了（上下分屏、拖分隔条）：只有「适合页面 / 高度」要重算
       if (onlyH ? (v === "page-fit" || v === "page-height") : (v === "page-width" || v === "auto" || v === "page-fit" || v === "page-actual")) {
@@ -1430,25 +1432,38 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     try { const f = parseFloat(localStorage.getItem("rh_split")); return f > 0.15 && f < 0.85 ? f : 0.5; } catch { return 0.5; }
   });
   const splitRowRef = useRef(null);
+  const splitBoxRef = useRef(null);         // 第二栏的盒子（拖分隔条时直接改它的宽 / 高）
   const dragSplit = (e) => {
     e.preventDefault();
     const row = splitRowRef.current;
     if (!row) return;
     const el = e.currentTarget;
+    const box = splitBoxRef.current;
     el.setPointerCapture(e.pointerId);
-    let f = splitFrac;
+    /* 拖的过程中只改第二栏那个盒子的宽 / 高（直接改 DOM，一帧最多一次），不走 React：
+       以前每动一下都 setState → 整个阅读器重渲染 + 两栏按新宽度重排、重画页面，每一下卡 0.5~1.5 秒（实测）。
+       松手再存 state；倍数不重算（同 Zotero，页面大小不变） */
+    let f = splitFrac, raf = 0;
     const move = (ev) => {
       const r = row.getBoundingClientRect();
       // 两边都至少留 280px（上下分时 160px）
       const [len, pos, min] = splitDir === "v" ? [r.height, r.bottom - ev.clientY, 160] : [r.width, r.right - ev.clientX, 280];
       f = Math.min(len - min, Math.max(min, pos)) / len;
-      setSplitFrac(f);
+      raf ||= requestAnimationFrame(() => {
+        raf = 0;
+        if (box) box.style[splitDir === "v" ? "height" : "width"] = `${f * 100}%`;
+      });
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      cancelAnimationFrame(raf);
+      if (box) box.style[splitDir === "v" ? "height" : "width"] = `${f * 100}%`;
+      setSplitFrac(f);
       try { localStorage.setItem("rh_split", String(f)); } catch { /* 存不了就算了 */ }
     };
+    el.addEventListener("pointercancel", up);
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
   };
@@ -1920,13 +1935,13 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
             <div onPointerDown={dragSplit} title={splitDir === "v" ? "拖动调整高度" : "拖动调整宽度"}
               className={`shrink-0 bg-[#2a2c2e] hover:bg-[#4a90d9] active:bg-[#4a90d9] transition-colors touch-none
                 ${splitDir === "v" ? "h-1.5 cursor-row-resize" : "w-1.5 cursor-col-resize"}`} />
-            <div className="relative shrink-0 min-w-0 min-h-0" style={splitDir === "v" ? { height: `${splitFrac * 100}%` } : { width: `${splitFrac * 100}%` }}
+            <div ref={splitBoxRef} className="relative shrink-0 min-w-0 min-h-0" style={splitDir === "v" ? { height: `${splitFrac * 100}%` } : { width: `${splitFrac * 100}%` }}
               onPointerDownCapture={() => setActivePane("split")}>
               <SplitPane doc={doc} main={apiRef} apiRef={splitApiRef} annotations={visibleAnns}
                 containerRef={splitContainerRef} viewerElRef={splitViewerElRef} onOverlay={onSplitOverlay}
                 onPick={pickSplit} activeId={activeId} hiddenId={editArea?.id || textEdit?.id} modeCls={toolCls}
                 arxivId={paperKey.replace(/^arxiv:/, "")} eqCopy={settings.eqCopy}
-                onReady={setSplitReady} onView={setSplitView} onResize={() => refitBothRef.current()} />
+                onReady={setSplitReady} onView={setSplitView} />
               {splitOverlay && createPortal(<>{renderEdit("split")}{renderSel("split")}</>, splitOverlay)}
               {activePane === "split" && <div className="rh-pane-active" />}
             </div>
@@ -2145,7 +2160,7 @@ function ZoomMenu({ zoom, mode, onPick }) {
  * 标注照样画出来（只看，点了不弹编辑条），公式旁的复制按钮也有；划选只能复制，加标注 / 翻译在主阅读区做。
  */
 function SplitPane({ doc, main, apiRef, containerRef, viewerElRef, onOverlay, onPick, activeId, hiddenId, modeCls,
-                     annotations, arxivId, eqCopy, onReady, onView, onResize }) {
+                     annotations, arxivId, eqCopy, onReady, onView }) {
   const [ready, setReady] = useState(null);
 
   useEffect(() => {
@@ -2174,21 +2189,6 @@ function SplitPane({ doc, main, apiRef, containerRef, viewerElRef, onOverlay, on
     return () => { apiRef.current = null; setReady(null); onReady(false); viewer.destroy(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc]);
-
-  // 栏的尺寸变了（拖分隔条、换方向）：交给外面两栏统一重算（两栏要一样大）
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    let w = el.clientWidth, h = el.clientHeight;
-    const ro = new ResizeObserver(() => {
-      if (el.clientWidth === w && el.clientHeight === h) return;
-      w = el.clientWidth; h = el.clientHeight;
-      onResize();
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useHighlightLayer(viewerElRef, apiRef, ready, annotations, { onPick, activeId, hiddenId });
   useEquationCopy(viewerElRef, apiRef, ready, arxivId, eqCopy);
