@@ -70,6 +70,7 @@ const IconNotes = <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L
 const IconGear = <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></>;
 const IconNote = <><path d="M20 15.5a1.5 1.5 0 0 1-1.5 1.5H8.5L4 20.5V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5z" /><path d="M8 8.5h8M8 12.5h5" /></>;
 const IconSplit = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="12" y1="4" x2="12" y2="20" /></>;
+const IconSplitV = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="12" x2="21" y2="12" /></>;
 const IconFitWidth = <><polyline points="7 8 3 12 7 16" /><polyline points="17 8 21 12 17 16" /><line x1="3" y1="12" x2="21" y2="12" /></>;
 const IconChat = <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />;
 
@@ -1255,8 +1256,20 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
      全屏只放阅读区（不带工具栏），Esc 由浏览器负责退出。适应宽度 / 高度这类自动倍数
      由上面的 ResizeObserver 跟着重排；全屏的尺寸变化是异步的，再补一次保险 */
   const readerRef = useRef(null);
-  /* 分屏（SplitPane）：右边那一栏占整个阅读区域的比例，拖中间的分隔条改，记在本机 */
+  /* 分屏（SplitPane）：左右（h）或上下（v）。第二栏占整个阅读区域的比例，拖中间的分隔条改；方向和比例记在本机 */
   const [splitOpen, setSplitOpen] = useState(false);
+  const [splitDir, setSplitDir] = useState(() => { try { return localStorage.getItem("rh_split_dir") === "v" ? "v" : "h"; } catch { return "h"; } });
+  const flipSplit = () => setSplitDir(d => {
+    const n = d === "h" ? "v" : "h";
+    try { localStorage.setItem("rh_split_dir", n); } catch { /* 存不了就算了 */ }
+    return n;
+  });
+  /* 开分屏时左边（主阅读区）改成「适合宽度」：栏变窄了，原来的固定倍数多半要横向滚动。
+     先设上，容器缩窄之后 ResizeObserver 还会按新宽度再算一次 */
+  const toggleSplit = () => {
+    if (!splitOpen && apiRef.current) apiRef.current.viewer.currentScaleValue = "page-width";
+    setSplitOpen(v => !v);
+  };
   const [splitFrac, setSplitFrac] = useState(() => {
     try { const f = parseFloat(localStorage.getItem("rh_split")); return f > 0.15 && f < 0.85 ? f : 0.5; } catch { return 0.5; }
   });
@@ -1270,8 +1283,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     let f = splitFrac;
     const move = (ev) => {
       const r = row.getBoundingClientRect();
-      const w = Math.min(r.width - 280, Math.max(280, r.right - ev.clientX));   // 两边都至少留 280px
-      f = w / r.width;
+      // 两边都至少留 280px（上下分时 160px）
+      const [len, pos, min] = splitDir === "v" ? [r.height, r.bottom - ev.clientY, 160] : [r.width, r.right - ev.clientX, 280];
+      f = Math.min(len - min, Math.max(min, pos)) / len;
       setSplitFrac(f);
     };
     const up = () => {
@@ -1416,7 +1430,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         <div className="flex-1 basis-0 min-w-0 flex items-center justify-end gap-1">
 
         <TBtn onClick={() => (findOpen ? closeFind() : openFind())} title="搜索（Ctrl+F）" active={findOpen}><Icon d={IconSearch} /></TBtn>
-        <TBtn onClick={() => setSplitOpen(v => !v)} title={splitOpen ? "关闭分屏" : "分屏：右边再开一个阅读区看同一篇（各自滚动、缩放）"}
+        <TBtn onClick={toggleSplit} title={splitOpen ? "关闭分屏" : "分屏：右边再开一个阅读区看同一篇（各自滚动、缩放）"}
           active={splitOpen} disabled={!doc}><Icon d={IconSplit} /></TBtn>
         <TBtn onClick={enterFullscreen} title="全屏阅读（Esc 退出）" disabled={!doc}><Icon d={IconFull} /></TBtn>
         <TBtn onClick={download} title="下载 PDF" disabled={!doc}><Icon d={IconDownload} /></TBtn>
@@ -1486,8 +1500,8 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
           </div>
         </aside>
 
-        <div ref={splitRowRef} className="relative flex-1 min-w-0 flex">
-        <div ref={readerRef} className="relative flex-1 min-w-0 bg-[#525659]">
+        <div ref={splitRowRef} className={`relative flex-1 min-w-0 min-h-0 flex ${splitOpen && splitDir === "v" ? "flex-col" : ""}`}>
+        <div ref={readerRef} className="relative flex-1 min-w-0 min-h-0 bg-[#525659]">
           {/* 标注工具条（顶栏放不下了）：浮在阅读区上，能拖（抓手 ⠿）、能横竖切换，位置记在本机。
               没拖过时竖排贴左边上下居中 / 横排贴顶边左右居中，左侧栏滑出来时跟着让开。
               居中用一层不吃指针的 flex 外壳，**不用 translate(-50%)**：带 transform 的祖先会让里面
@@ -1677,10 +1691,11 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         </div>
         {splitOpen && doc && (
           <>
-            <div onPointerDown={dragSplit} title="拖动调整宽度"
-              className="w-1.5 shrink-0 cursor-col-resize bg-[#2a2c2e] hover:bg-[#4a90d9] active:bg-[#4a90d9] transition-colors touch-none" />
-            <div className="shrink-0 min-w-0" style={{ width: `${splitFrac * 100}%` }}>
-              <SplitPane doc={doc} startPage={page} annotations={visibleAnns}
+            <div onPointerDown={dragSplit} title={splitDir === "v" ? "拖动调整高度" : "拖动调整宽度"}
+              className={`shrink-0 bg-[#2a2c2e] hover:bg-[#4a90d9] active:bg-[#4a90d9] transition-colors touch-none
+                ${splitDir === "v" ? "h-1.5 cursor-row-resize" : "w-1.5 cursor-col-resize"}`} />
+            <div className="shrink-0 min-w-0 min-h-0" style={splitDir === "v" ? { height: `${splitFrac * 100}%` } : { width: `${splitFrac * 100}%` }}>
+              <SplitPane doc={doc} startPage={page} annotations={visibleAnns} dir={splitDir} onFlip={flipSplit}
                 arxivId={paperKey.replace(/^arxiv:/, "")} eqCopy={settings.eqCopy} onClose={() => setSplitOpen(false)} />
             </div>
           </>
@@ -1847,7 +1862,7 @@ function ZoomMenu({ zoom, mode, onPick }) {
  * 标注照样画出来（只看，点了不弹编辑条），公式旁的复制按钮也有；划选只能复制，加标注 / 翻译在左边做。
  * 里面的链接（引用号、章节、公式）在右边自己跳。
  */
-function SplitPane({ doc, startPage, annotations, arxivId, eqCopy, onClose }) {
+function SplitPane({ doc, startPage, annotations, dir, onFlip, arxivId, eqCopy, onClose }) {
   const containerRef = useRef(null);
   const viewerElRef = useRef(null);
   const apiRef = useRef(null);
@@ -1920,6 +1935,7 @@ function SplitPane({ doc, startPage, annotations, arxivId, eqCopy, onClose }) {
         <TBtn onClick={() => stepZoom(1)} title="放大"><Icon d={IconPlus} /></TBtn>
         <TBtn onClick={() => setScale("page-width")} title="适合宽度"><Icon d={IconFitWidth} /></TBtn>
         <div className="flex-1" />
+        <TBtn onClick={onFlip} title={dir === "v" ? "改成左右分屏" : "改成上下分屏"}><Icon d={dir === "v" ? IconSplit : IconSplitV} /></TBtn>
         <TBtn onClick={onClose} title="关闭分屏"><Icon d={<><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></>} /></TBtn>
       </div>
       <div className="relative flex-1 min-h-0">
