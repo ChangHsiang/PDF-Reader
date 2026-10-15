@@ -36,7 +36,7 @@ export async function exportBackup() {
   } catch { /* 读不了就算了 */ }
   const data = { app: APP, format: FORMAT, version: currentVersion(), exportedAt: new Date().toISOString(), storage, local };
   const d = new Date(), pad = (n) => String(n).padStart(2, "0");
-  const name = `PDF-Reader-备份-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+  const name = `PDF-Reader-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
   const a = document.createElement("a");
   a.href = url; a.download = name;
