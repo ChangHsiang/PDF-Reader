@@ -105,6 +105,39 @@ export function addAnnotation(paperKey, meta, fields) {
   });
 }
 
+/**
+ * 导入 PDF 文件里自带的标注（lib/importPdf 转好的 items：[{ key（指纹）, nm（注释名）, ann }]）。
+ * 导入过的指纹记在这篇的笔记上（imported），再打开不重复导入，删掉的也不会再冒回来；
+ * nm 正好是本地已有的笔记 id（我们自己导出的文件）也跳过。新笔记一律用新 id（文件可能是别人发来的，
+ * 拿注释名当 id 会和别人同步上去的那条撞主键）。返回导入了几条
+ */
+export function importAnnotations(paperKey, meta, items) {
+  if (!items.length) return Promise.resolve(0);
+  return mutate(baseOf(paperKey), (d) => {
+    const ids = new Set(d.anns.map(a => a.id));
+    const note = d.notes[paperKey];
+    const done = new Set(note?.imported || []);
+    let added = 0;
+    const fresh = [];
+    for (const { key, nm, ann } of items) {
+      if (done.has(key)) continue;
+      done.add(key);
+      if (nm && ids.has(nm)) continue;
+      fresh.push({
+        id: crypto.randomUUID(), paper_key: paperKey, account: null, sync: "dirty",
+        rects: null, quote: null, prefix: null, suffix: null, body: null, tags: [], style: null,
+        source_annotation_id: null, source_user_id: null, ...ann,
+      });
+      added++;
+    }
+    if (!fresh.length && done.size === (note?.imported || []).length) return 0;
+    const n = touchNote(d, paperKey, meta);
+    n.imported = [...done].slice(-5000);
+    d.anns.push(...fresh);
+    return added;
+  });
+}
+
 export function updateAnnotation(paperKey, id, patch) {
   return mutate(baseOf(paperKey), (d) => {
     const a = d.anns.find(x => x.id === id);

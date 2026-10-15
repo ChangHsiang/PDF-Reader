@@ -662,6 +662,9 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
       {mine && a.source_user_id && (
         <div className="text-[10px] text-[#9a9a9a] font-sans mt-1">来自他人笔记</div>
       )}
+      {mine && a.style?.fromFile && (
+        <div className="text-[10px] text-[#9a9a9a] font-sans mt-1">来自 PDF 文件{a.style.fromFile.author ? ` · ${a.style.fromFile.author}` : ""}</div>
+      )}
     </div>
   );
 }

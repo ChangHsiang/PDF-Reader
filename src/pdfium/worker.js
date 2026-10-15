@@ -45,6 +45,26 @@ async function boot() {
 /** PDFium 的导出函数：embedpdf 包装过的就用包装的，没包装的直接调 wasm 导出（参数全是数字 / 指针） */
 const fn = (name) => native.pdfiumModule[name] || native.pdfiumModule.pdfium["_" + name];
 
+/* 能转成我们笔记的 PDF 注释类型（lib/importPdf）：便签、文本框、方框、圆框、高亮、下划线、波浪线、手写。
+   这几类打开时读出来转成笔记，并从「显示用的这一份」里去掉（不然和我们画的叠两层）；别的（链接、印章、表单……）照旧由 PDF 自己画 */
+const IMPORTABLE = new Set([1, 3, 5, 6, 9, 10, 11, 15]);
+/** 把一页上能导入的注释从内存里的这份文档删掉（倒着删，下标不乱）。不动文件，也不重新生成页面内容 */
+function stripImportable(doc, pageIndex) {
+  const M = native.pdfiumModule;
+  const pc = native.cache.getContext(doc.id).acquirePage(pageIndex);
+  let removed = 0;
+  try {
+    for (let i = M.FPDFPage_GetAnnotCount(pc.pagePtr) - 1; i >= 0; i--) {
+      const a = M.FPDFPage_GetAnnot(pc.pagePtr, i);
+      if (!a) continue;
+      const t = M.FPDFAnnot_GetSubtype(a);
+      M.FPDFPage_CloseAnnot(a);
+      if (IMPORTABLE.has(t) && M.FPDFPage_RemoveAnnot(pc.pagePtr, i)) removed++;
+    }
+  } finally { pc.release(); }
+  return removed;
+}
+
 const run = (task) => (task?.toPromise ? task.toPromise() : task);
 
 /** 链接 / 目录的目标 → { dest: { pageIndex, x, y } } 或 { url }。XYZ 以外的跳转方式只给页码 */
@@ -234,6 +254,8 @@ const ops = {
     const doc = await run(n.openDocumentBuffer({ id, content: bytes }));
     let failed = 0;
     try {
+      // 文件里原有的这几类标注打开时已经导入成笔记了（删掉的就是用户删掉的）：先去掉，免得和写进去的重复
+      for (const page of doc.pages) stripImportable(doc, page.index);
       for (const { pageIndex, annotation } of items) {
         const page = doc.pages[pageIndex];
         if (!page) { failed++; continue; }
@@ -244,6 +266,22 @@ const ops = {
     } finally {
       await run(n.closeDocument(doc)).catch(() => {});
     }
+  },
+  /**
+   * 文件里自带的标注（Edge / Acrobat / Zotero 存进去的，或者我们导出的）：读出能导入的那几类，按页返回 embedpdf 的注释对象
+   * （坐标单位点、原点左上），然后从显示用的这份文档里去掉它们 —— 之后由我们的标注层画（见 lib/importPdf）
+   */
+  async takeAnnots({ docId }) {
+    const doc = docs.get(docId);
+    const pages = [];
+    for (const page of doc.pages) {
+      let list = [];
+      try { list = (await run(native.getPageAnnotations(doc, page))) || []; } catch { /* 这一页读不了就算了 */ }
+      list = list.filter(a => IMPORTABLE.has(a.type));
+      if (list.length) stripImportable(doc, page.index);
+      pages.push(list);
+    }
+    return { pages };
   },
   /** 调试用：wasm 堆的大小（PDFium 自己的内存都在这里面） */
   async mem() { return { fontLog, wasmHeapMB: native ? Math.round(native.pdfiumModule?.pdfium?.HEAPU8?.length / 1048576 || native.pdfium?.HEAPU8?.length / 1048576 || 0) : 0, keys: native ? Object.keys(native).slice(0, 12) : [] }; },

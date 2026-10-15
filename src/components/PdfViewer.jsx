@@ -5,7 +5,7 @@ import {
 } from "../lib/pdfAnchor";
 import {
   baseOf, loadMine, watchPaper, addAnnotation, updateAnnotation, deleteAnnotation, setVisibility,
-  copyAnnotation, copiedSourceIds, syncPaper, fetchOthers, exportMarkdown, normTags, isLocalKey,
+  copyAnnotation, copiedSourceIds, syncPaper, fetchOthers, exportMarkdown, normTags, isLocalKey, importAnnotations,
   setShareExcluded, loadHiddenOthers, setHiddenOther,
 } from "../lib/notes";
 import { countComments } from "../lib/comments";
@@ -26,6 +26,7 @@ import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey } from "../lib/refs";
 import { sharedPdfium } from "../lib/pdfium/client";
 import { toPdfAnnotations } from "../lib/exportPdf";
+import { fileAnnotsToNotes } from "../lib/importPdf";
 import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer";
 import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
 import { Avatar, Icon } from "./bits";
@@ -207,6 +208,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
 
   // doc 必须进 state（缩略图栏在渲染期用它，读 ref 不会触发重渲染）
   const [doc, setDoc] = useState(null);
+  /* 文件里自带的标注（worker 的 takeAnnots，打开时读出、已从显示用的那份里去掉）：等笔记就绪后导入成笔记（lib/importPdf） */
+  const [fileAnns, setFileAnns] = useState(null);
   const [err, setErr] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -311,6 +314,21 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   const [markKind, setMarkKind] = useState(() =>
     localStorage.getItem("rh_mark_kind") === "underline" ? "underline" : "highlight");
   const pickMarkKind = (k) => { setMarkKind(k); localStorage.setItem("rh_mark_kind", k); };
+
+  /* 导入文件里自带的标注：导入过的（指纹记在笔记上）不再导入，删掉的也不会冒回来 */
+  useEffect(() => {
+    if (!doc || !fileAnns || !paperKey) return;
+    let alive = true;
+    (async () => {
+      const items = await fileAnnotsToNotes(fileAnns.pages, doc.pages, (i) => doc.text(i), me?.name || "我");
+      const n = await importAnnotations(paperKey, meta, items);
+      if (!alive) return;
+      setFileAnns(null);
+      if (n > 0) { reload(); bump(); showToast(`已把 PDF 文件里的 ${n} 条标注导入成笔记，可以在笔记列表里编辑`); }
+    })().catch(e => console.error("[import]", e));
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, fileAnns, paperKey]);
 
   const reload = useCallback(async () => {
     if (!paperKey) return;
@@ -493,6 +511,10 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         const docId = `d${++docSeq}`;
         const info = await pdf.open(docId, buf);
         if (!alive) { pdf.close(docId); return; }
+        // 先把文件里自带的标注读出来、从显示用的这份里去掉，再开始画页面（不然先画出来一层，导入后又叠一层）
+        const taken = await pdf.takeAnnots(docId).catch(() => null);
+        if (!alive) { pdf.close(docId); return; }
+        if (taken?.pages.some(l => l.length)) setFileAnns(taken);
         handle = new PdfiumDocument(pdf, docId, info, bytes);
         viewer.setDocument(handle);
         apiRef.current = { viewer, linkService, eventBus };
