@@ -5,11 +5,15 @@ import PdfViewer from "../components/PdfViewer";
 import LoginForm from "../components/LoginForm";
 import { useSession } from "../lib/useSession";
 import { arxivIdFromUrl } from "../lib/pdfAnchor";
+import { registerViewerTab } from "../lib/tabRestore";
 
 /**
  * 阅读器页面：`viewer.html?url=https://arxiv.org/pdf/2301.12345v2[&panel=comments]`
  * background 的重定向规则、arXiv 摘要页上的按钮、弹窗里的列表都打开这一页。
  */
+
+// 插件更新时浏览器会关掉这个标签：先登记，更新后由 background 重新打开（lib/tabRestore）
+registerViewerTab();
 
 const params = new URLSearchParams(location.search);
 const rawUrl = params.get("url") || "";

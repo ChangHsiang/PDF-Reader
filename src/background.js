@@ -1,11 +1,13 @@
 import { signIn, signOut, getToken, getSession } from "./lib/auth";
 import { countComments } from "./lib/comments";
+import { forgetViewerTab, reopenViewerTabs, clearViewerTabs } from "./lib/tabRestore";
 
 /**
  * Service worker：
  * 1. 接管 arXiv PDF —— 打开 arxiv.org/pdf/… 时重定向到扩展自己的阅读器
  * 2. 登录态的唯一持有者（见 lib/auth.js 文件头：refresh_token 轮换只能在一处做）
  * 3. 给 arXiv 摘要页上的内容脚本查评论数、开阅读器
+ * 4. 插件更新后把被浏览器关掉的阅读器标签重新打开（见 lib/tabRestore）
  */
 
 const VIEWER = chrome.runtime.getURL("viewer.html");
@@ -14,6 +16,7 @@ const RAW_BASE = 100000;        // 会话级放行规则：id = RAW_BASE + tabId
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [RAW_BASE + tabId] }).catch(() => {});
+  forgetViewerTab(tabId);            // 用户自己关的：不用在更新后重新打开
 });
 
 async function getSettings() {
@@ -45,8 +48,11 @@ async function applyRules() {
   });
 }
 
-chrome.runtime.onInstalled.addListener(applyRules);
-chrome.runtime.onStartup.addListener(applyRules);
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  applyRules();
+  if (reason === "update") reopenViewerTabs();       // 更新 / 在扩展页点刷新：浏览器刚把阅读器标签全关了
+});
+chrome.runtime.onStartup.addListener(() => { applyRules(); clearViewerTabs(); });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && "settings" in changes) applyRules();
 });
@@ -68,6 +74,7 @@ const handlers = {
         condition: { tabIds: [tabId], resourceTypes: ["main_frame"], requestDomains: ["arxiv.org"] },
       }],
     });
+    forgetViewerTab(tabId);            // 这个标签离开阅读器了
     await chrome.tabs.update(tabId, { url: m.url });
   },
   "viewer:open": async (m, sender) => {
