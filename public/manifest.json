@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PDF-Reader",
   "short_name": "PDF-Reader",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsBEKhnCvZ3V58SM/eF/PTxhljIIFJaDspOVSuX2HyIowcE6tSBIANJKANRVv+j3dpJfmE6Ju2b9Jucce9iwkDndBuhTCGVWPqA62MUk1NDenWC75iIaC7IvDjy/DdCSm5DNlOkIMpUWsJKJVRDJEOSpTPPk/QF6OEXbPZ4RimZQUhpV2R9rnNnCvEiLNzUdwzzlUj3NJmWYrQgW2+87auLrqWjW4Y6YiqmnvAeRhslGWzUXrfQmpfcSHqr4dEPs9rhR5npVwbvfMxyccwH2UnKpxlfjWFAeJpJL/iE5ySAFLTqkKsMonuKSBBihsdqHfcvSamolUefYg5qSpNuSd3wIDAQAB",
   "description": "arXiv PDF 笔记阅读器：高亮、框选、画笔、批注，引用文献卡片，公式复制 LaTeX，划词翻译；可登录 ResearchHub 同步笔记。",
   "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
