@@ -1927,7 +1927,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
               <div className="flex items-start gap-2">
                 <div className="flex-1">
                   <div className="font-bold text-[#fff]">PDF-Reader 有新版本 v{upd.latest.version}</div>
-                  <div className="text-[11.5px] text-[#9a9a9a] mt-0.5">当前 v{upd.current}。下载后解压覆盖原来的文件夹，在扩展管理页点刷新（设置 → 版本里有步骤）</div>
+                  <div className="text-[11.5px] text-[#9a9a9a] mt-0.5">当前 v{upd.current}。下载后解压覆盖原来的文件夹，在扩展管理页点刷新；<b className="text-[#ffb36b]">别点「移除」</b>，会删掉笔记。升级前建议先在设置 → 数据里导出备份</div>
                 </div>
                 <button onClick={() => { setUpdLater(true); try { sessionStorage.setItem("rh_upd_later", upd.latest.version); } catch { /* 无痕 */ } }}
                   title="先不提示（下次打开还会提示）"

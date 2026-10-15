@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useSettings, setSettings, PAPERS } from "../lib/settings";
 import { viaCustom, LANGS } from "../lib/translate";
 import { useUpdate, openTab, openExtensionsPage } from "../lib/update";
+import { exportBackup, importBackup, currentStats } from "../lib/backup";
 
 /**
  * 阅读器顶栏「设置」：阅读 + 翻译两组。
@@ -226,6 +227,9 @@ export default function SettingsDialog({ onClose }) {
             </div>
           )}
 
+          <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">数据</div>
+          <DataSection btn={btn} />
+
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">版本</div>
           <VersionSection btn={btn} />
         </div>
@@ -276,10 +280,53 @@ function VersionSection({ btn }) {
               : <button onClick={u.ignore} className={ghost}>忽略此版本</button>}
           </div>
           <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
-            升级：下载后解压，把里面的文件覆盖到原来加载插件的那个文件夹，再到
+            升级：先在上面「数据」里导出一份备份；下载后解压，把里面的文件覆盖到原来加载插件的那个文件夹，再到
             <button onClick={openExtensionsPage} className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[11.5px]">扩展管理页</button>
-            点这个插件卡片上的刷新按钮。笔记都存在浏览器里，不会丢。
+            点这个插件卡片上的刷新按钮。
+            <b className="text-[#ffb36b] font-bold">不要点「移除」</b>：移除会让浏览器删掉所有笔记。
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 设置 → 数据：本机存了多少、导出备份 / 导入备份（lib/backup）。提醒一句「移除插件会删掉笔记」 */
+function DataSection({ btn }) {
+  const [st, setSt] = useState(null);
+  const [msg, setMsg] = useState(null);         // { ok, text }
+  const fileRef = useRef(null);
+  const refresh = () => currentStats().then(setSt).catch(() => {});
+  useEffect(() => { refresh(); }, []);
+  const ghost = `${btn} text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a]`;
+  const doExport = async () => {
+    try { const s = await exportBackup(); setMsg({ ok: true, text: `已导出：${s.papers} 篇论文、${s.anns} 条标注（文件在浏览器的下载文件夹里）` }); }
+    catch (e) { setMsg({ ok: false, text: `导出失败：${e.message}` }); }
+  };
+  const doImport = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try { await importBackup(f); await refresh(); setMsg({ ok: true, text: "已导入（和现有的笔记合并，同一条留较新的）" }); }
+    catch (err) { setMsg({ ok: false, text: err.message }); }
+  };
+  return (
+    <div className="flex flex-col gap-2 pb-3 text-[12.5px] text-[#c8c8c8]">
+      <div className="flex items-center gap-2">
+        <span className="flex-1">
+          本机存着 <b className="text-[#fff]">{st ? `${st.papers} 篇论文、${st.anns} 条标注` : "…"}</b>
+        </span>
+        <button onClick={doExport} className={ghost} style={{ border: "1px solid #ffffff33" }}>导出备份</button>
+        <button onClick={() => fileRef.current?.click()} className={ghost} style={{ border: "1px solid #ffffff33" }}>导入备份</button>
+        <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={doImport} />
+      </div>
+      <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
+        笔记和标注都存在这个浏览器里。<b className="text-[#ffb36b] font-bold">在扩展管理页「移除」插件会把它们全部删掉</b>
+        （升级只要覆盖文件再点刷新，不会动数据）。重装、换电脑之前先导出备份，装好后导入。备份里不含登录信息和翻译接口的 Key。
+      </div>
+      {msg && (
+        <div className={`text-[12px] leading-relaxed rounded-md px-2.5 py-2 ${msg.ok ? "text-[#7ee3a0] bg-[#7ee3a014]" : "text-[#ff9a9a] bg-[#ff9a9a14]"}`}>
+          {msg.text}
         </div>
       )}
     </div>
