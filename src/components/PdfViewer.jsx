@@ -1349,12 +1349,30 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
      输入框里带「第几处 / 共几处」，旁边上一处 / 下一处 / 关闭） ── */
   const findInputRef = useRef(null);
   const [findCount, setFindCount] = useState(null);   // { current, total } | null
+  /* 搜索选项（搜索框下面那一行）：高亮所有（默认开）/ 区分大小写 / 整词，记在本机 */
+  const [findOpts, setFindOptsRaw] = useState(() => {
+    const def = { highlightAll: true, caseSensitive: false, entireWord: false };
+    try { return { ...def, ...JSON.parse(localStorage.getItem("rh_find_opts") || "{}") }; } catch { return def; }
+  });
+  const findOptsRef = useRef(findOpts);
+  findOptsRef.current = findOpts;
+  /* 搜的是哪一栏：每次现查（分屏时是最后点过的那一栏）。
+     **别把 act 闭包进 useCallback 里**：那样永远是第一次渲染时的那一栏 —— 分屏后只能搜左栏（踩过） */
+  const actRef = useRef(act);
+  actRef.current = act;
   const runFind = useCallback((q, again, prev = false) => {
-    act()?.eventBus.dispatch("find", {
-      source: window, type: again ? "again" : "", query: q,
-      caseSensitive: false, entireWord: false, highlightAll: true, findPrevious: prev,
+    actRef.current()?.eventBus.dispatch("find", {
+      source: window, type: again ? "again" : "", query: q, findPrevious: prev, ...findOptsRef.current,
     });
   }, []);
+  const setFindOpt = (k) => {
+    const next = { ...findOptsRef.current, [k]: !findOptsRef.current[k] };
+    findOptsRef.current = next;
+    setFindOptsRaw(next);
+    try { localStorage.setItem("rh_find_opts", JSON.stringify(next)); } catch { /* 存不了就算了 */ }
+    if (query) runFind(query, false);
+    findInputRef.current?.focus();
+  };
   const openFind = useCallback(() => {
     setFindOpen(true);
     // 已经开着时再按 Ctrl+F：聚焦并全选，方便直接换关键词
@@ -1377,6 +1395,15 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     return () => { bus.off("updatefindmatchescount", onCount); bus.off("updatefindcontrolstate", onState); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, onSplit]);
+  /* 分屏时换了当前栏：搜索跟过去（另一栏的命中高亮清掉，在这一栏重新搜） */
+  const queryRef = useRef("");
+  useEffect(() => {
+    if (!findOpen || !queryRef.current) return;
+    const other = onSplit ? apiRef.current : splitApiRef.current;
+    other?.eventBus.dispatch("findbarclose", { source: window });
+    runFind(queryRef.current, false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onSplit]);
 
   // Ctrl/⌘+F 打开文档内搜索（不然会落到浏览器的页面搜索，搜不到没渲染的页）
   useEffect(() => {
@@ -1918,37 +1945,6 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
               </div>
             </div>
           )}
-          {findOpen && (
-            <div className="absolute top-2 right-4 z-30 flex items-center gap-1 p-2 rounded-lg
-                            bg-[#323639] border border-[#ffffff1f] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
-              <div className="relative">
-                <input ref={findInputRef} autoFocus value={query} placeholder="在文档中搜索"
-                  onChange={e => { setQuery(e.target.value); runFind(e.target.value, false); if (!e.target.value) setFindCount(null); }}
-                  onKeyDown={e => {
-                    e.stopPropagation();
-                    if (e.key === "Enter" && query) { e.preventDefault(); runFind(query, true, e.shiftKey); }
-                    if (e.key === "Escape") closeFind();
-                  }}
-                  className="h-8 w-[260px] pl-2.5 pr-16 rounded-md bg-[#00000059] border border-[#ffffff33]
-                             text-[13px] text-[#fff] font-sans outline-none placeholder:text-[#ffffff59] focus:border-[#ffffff80]" />
-                {query && findCount && (
-                  <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] font-sans tabular-nums pointer-events-none
-                    ${findCount.total ? "text-[#c8c8c8]" : "text-[#ff9a9a]"}`}>
-                    {findCount.total ? `${findCount.current} / ${findCount.total}` : "0 / 0"}
-                  </span>
-                )}
-              </div>
-              <TBtn onClick={() => query && runFind(query, true, true)} title="上一处（Shift+Enter）" disabled={!findCount?.total}>
-                <Icon d={IconUp} size={17} />
-              </TBtn>
-              <TBtn onClick={() => query && runFind(query, true)} title="下一处（Enter）" disabled={!findCount?.total}>
-                <Icon d={IconDown} size={17} />
-              </TBtn>
-              <TBtn onClick={closeFind} title="关闭（Esc）">
-                <Icon d={<><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></>} size={16} />
-              </TBtn>
-            </div>
-          )}
 
           <AnnEditor draft={draft} onChange={setDraft} onSave={saveDraft} onCancel={() => setDraft(null)}
             showTags tagSuggestions={allTags} doc={doc} />
@@ -2029,6 +2025,49 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
                 </div>
               ))}
             </div>
+            </div>
+          )}
+          {findOpen && (
+            /* 搜索框挂在两栏外面那一层（分屏时点它不会把「当前栏」切回左栏）；第二行是搜索选项 */
+            <div className="absolute top-2 right-4 z-[55] flex flex-col gap-1.5 p-2 rounded-lg
+                            bg-[#323639] border border-[#ffffff1f] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+              <div className="flex items-center gap-1">
+              <div className="relative">
+                <input ref={findInputRef} autoFocus value={query} placeholder="在文档中搜索"
+                  onChange={e => { setQuery(e.target.value); queryRef.current = e.target.value; runFind(e.target.value, false); if (!e.target.value) setFindCount(null); }}
+                  onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === "Enter" && query) { e.preventDefault(); runFind(query, true, e.shiftKey); }
+                    if (e.key === "Escape") closeFind();
+                  }}
+                  className="h-8 w-[260px] pl-2.5 pr-16 rounded-md bg-[#00000059] border border-[#ffffff33]
+                             text-[13px] text-[#fff] font-sans outline-none placeholder:text-[#ffffff59] focus:border-[#ffffff80]" />
+                {query && findCount && (
+                  <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] font-sans tabular-nums pointer-events-none
+                    ${findCount.total ? "text-[#c8c8c8]" : "text-[#ff9a9a]"}`}>
+                    {findCount.total ? `${findCount.current} / ${findCount.total}` : "0 / 0"}
+                  </span>
+                )}
+              </div>
+              <TBtn onClick={() => query && runFind(query, true, true)} title="上一处（Shift+Enter）" disabled={!findCount?.total}>
+                <Icon d={IconUp} size={17} />
+              </TBtn>
+              <TBtn onClick={() => query && runFind(query, true)} title="下一处（Enter）" disabled={!findCount?.total}>
+                <Icon d={IconDown} size={17} />
+              </TBtn>
+              <TBtn onClick={closeFind} title="关闭（Esc）">
+                <Icon d={<><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></>} size={16} />
+              </TBtn>
+              </div>
+              <div className="flex items-center gap-4 px-0.5 text-[12.5px] font-sans text-[#e6e6e6]">
+                {[["highlightAll", "高亮所有"], ["caseSensitive", "区分大小写"], ["entireWord", "整词"]].map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <input type="checkbox" checked={findOpts[k]} onChange={() => setFindOpt(k)}
+                      className="w-3.5 h-3.5 m-0 cursor-pointer accent-[#7ec8e3]" />
+                    {label}
+                  </label>
+                ))}
+              </div>
             </div>
           )}
         </div>
