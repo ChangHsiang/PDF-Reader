@@ -44,6 +44,8 @@ export function toPdfAnnotations(anns, pages, author) {
     if (!pg || a.stale) { skipped++; continue; }
     const W = pg.size.width, H = pg.size.height;
     const base = {
+      // 注释的名字（NM）用笔记的 id：这个文件再用本插件打开时认得出「这条就是我那条」，文件里那份就不画了（不叠两层）
+      id: a.id,
       author, contents: a.body || "",
       created: a.created_at ? new Date(a.created_at) : new Date(),
       modified: a.updated_at ? new Date(a.updated_at) : new Date(),

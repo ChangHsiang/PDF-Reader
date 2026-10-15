@@ -45,6 +45,29 @@ async function boot() {
 /** PDFium 的导出函数：embedpdf 包装过的就用包装的，没包装的直接调 wasm 导出（参数全是数字 / 指针） */
 const fn = (name) => native.pdfiumModule[name] || native.pdfiumModule.pdfium["_" + name];
 
+/**
+ * 把名字（/NM）在 names 里的注释从内存里的这份文档删掉（倒着删，下标不乱）。不动文件，也不重新生成页面内容。
+ * 用在「我们自己导出的文件」：那几条注释的名字就是笔记 id，本插件里已经有对应的笔记在画，文件里那份不再画，免得叠两层。
+ * 别人 / 别的软件加的标注名字对不上，照旧由 PDF 自己画
+ */
+function stripNamed(doc, names) {
+  const M = native.pdfiumModule;
+  let removed = 0;
+  for (const page of doc.pages) {
+    const pc = native.cache.getContext(doc.id).acquirePage(page.index);
+    try {
+      for (let i = M.FPDFPage_GetAnnotCount(pc.pagePtr) - 1; i >= 0; i--) {
+        const a = M.FPDFPage_GetAnnot(pc.pagePtr, i);
+        if (!a) continue;
+        const nm = native.getAnnotString(a, "NM");
+        M.FPDFPage_CloseAnnot(a);
+        if (nm && names.has(nm) && M.FPDFPage_RemoveAnnot(pc.pagePtr, i)) removed++;
+      }
+    } finally { pc.release(); }
+  }
+  return removed;
+}
+
 const run = (task) => (task?.toPromise ? task.toPromise() : task);
 
 /** 链接 / 目录的目标 → { dest: { pageIndex, x, y } } 或 { url }。XYZ 以外的跳转方式只给页码 */
@@ -234,6 +257,8 @@ const ops = {
     const doc = await run(n.openDocumentBuffer({ id, content: bytes }));
     let failed = 0;
     try {
+      // 文件是我们以前导出过的：同一条笔记的旧注释先去掉，再写新的（别人 / 别的软件加的标注不动）
+      stripNamed(doc, new Set(items.map(x => x.annotation.id).filter(Boolean)));
       for (const { pageIndex, annotation } of items) {
         const page = doc.pages[pageIndex];
         if (!page) { failed++; continue; }
@@ -244,6 +269,10 @@ const ops = {
     } finally {
       await run(n.closeDocument(doc)).catch(() => {});
     }
+  },
+  /** 显示用的这份文档里，去掉名字在 names 里的注释（见 stripNamed） */
+  async stripNamed({ docId, names }) {
+    return stripNamed(docs.get(docId), new Set(names));
   },
   /** 调试用：wasm 堆的大小（PDFium 自己的内存都在这里面） */
   async mem() { return { fontLog, wasmHeapMB: native ? Math.round(native.pdfiumModule?.pdfium?.HEAPU8?.length / 1048576 || native.pdfium?.HEAPU8?.length / 1048576 || 0) : 0, keys: native ? Object.keys(native).slice(0, 12) : [] }; },

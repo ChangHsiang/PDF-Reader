@@ -493,6 +493,11 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         const docId = `d${++docSeq}`;
         const info = await pdf.open(docId, buf);
         if (!alive) { pdf.close(docId); return; }
+        /* 文件里自带的标注照旧由 PDF 自己画；只有「我们自己导出的」那几条（注释名 = 本机已有的笔记 id）
+           从显示用的这份里去掉，由我们的笔记画 —— 不然叠两层。要在开始画页面之前做 */
+        const own = await loadMine(paperKey).then(m => m.annotations.map(a => a.id)).catch(() => []);
+        if (own.length) await pdf.stripNamed(docId, own).catch(() => 0);
+        if (!alive) { pdf.close(docId); return; }
         handle = new PdfiumDocument(pdf, docId, info, bytes);
         viewer.setDocument(handle);
         apiRef.current = { viewer, linkService, eventBus };
