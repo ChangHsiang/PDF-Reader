@@ -23,7 +23,7 @@ import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey } from "../lib/refs";
 import { createPdfium } from "../lib/pdfium/client";
-import { tokenize, trimSelection } from "../lib/pdfium/textLayer";
+import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer";
 import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
 import { Avatar, Icon } from "./bits";
 
@@ -2103,6 +2103,7 @@ function LinkPreview({ pv, doc, paper, onEnter, onLeave }) {
 function PagePreview({ doc, dest, width, height }) {
   const boxRef = useRef(null);
   const canvasRef = useRef(null);
+  const pageRef = useRef(null);
   const page = doc.pages[dest.pageIndex];
   const k = width / page.size.width;                 // CSS 像素 / 点
   const at = dest.y == null ? null : doc.userToPage(dest.pageIndex, dest.x, dest.y);
@@ -2116,6 +2117,16 @@ function PagePreview({ doc, dest, width, height }) {
       c.getContext("2d").drawImage(bitmap, 0, 0);
       bitmap.close();
     }).catch(() => {});
+    /* 文字层（和正文同一套，lib/pdfium/textLayer）：预览里也能划选复制。外层挂 pdfViewer 和 --scale-factor，
+       index.css 里文字层的样式、缩放就都对上了 */
+    doc.text(dest.pageIndex).then((data) => {
+      const host = pageRef.current;
+      if (!alive || !host) return;
+      const { layer, nodes } = buildTextLayer(data, page.size);
+      layer.append(...nodes);
+      host.querySelector(":scope > .textLayer")?.remove();
+      host.appendChild(layer);
+    }).catch(() => {});
     // 目标位置放在预览框靠上一点（留一行上文）；只给了页码的跳到页首
     if (boxRef.current) boxRef.current.scrollTop = Math.max(0, (at ? at.y : 0) * k - 24);
     return () => { alive = false; };
@@ -2123,9 +2134,9 @@ function PagePreview({ doc, dest, width, height }) {
   }, [doc, dest.pageIndex, dest.y, width]);
   return (
     <div ref={boxRef} className="overflow-y-auto overflow-x-hidden rh-light-scroll" style={{ height }}>
-      <div className="rh-thumb relative bg-[#fff]" style={{ width, height: page.size.height * k }}>
-        <canvas ref={canvasRef} className="block w-full h-full" />
-        {/* 目标位置（跳转会落到的那一点）：红点，同 Zotero */}
+      <div ref={pageRef} className="pdfViewer relative" style={{ width, height: page.size.height * k, padding: 0, "--scale-factor": k }}>
+        <div className="rh-thumb absolute inset-0 bg-[#fff]"><canvas ref={canvasRef} className="block w-full h-full" /></div>
+        {/* 目标位置（跳转会落到的那一点）：红点，同 Zotero。放在 rh-thumb 外面，夜间模式的反相不会把它变成青色 */}
         {at && (
           <div className="absolute w-3 h-3 rounded-full bg-[#e53935] opacity-85 pointer-events-none"
             style={{ left: Math.max(2, Math.min(at.x * k, width - 14)) - 6, top: at.y * k - 6 }} />
