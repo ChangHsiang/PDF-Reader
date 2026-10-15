@@ -25,8 +25,13 @@ export function createPdfium() {
     links: (docId, pageIndex) => call("links", { docId, pageIndex }),
     text: (docId, pageIndex) => call("text", { docId, pageIndex }),
     namedDests: (docId, prefix) => call("namedDests", { docId, prefix }),
+    identify: (docId) => call("identify", { docId }),
     close: (docId) => call("close", { docId }),
     mem: () => call("mem"),
     terminate: () => worker.terminate(),
   };
 }
+
+/** 整个页面共用一个 PDFium Worker（阅读器、认本地文件都用它；wasm 只加载一次） */
+let shared = null;
+export const sharedPdfium = () => (shared ||= createPdfium());

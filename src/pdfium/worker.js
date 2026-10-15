@@ -183,6 +183,45 @@ const ops = {
     } finally { mm.free(lenPtr); mm.free(flags); mm.free(xyz); }
     return out;
   },
+  /**
+   * 认文件用（本地 PDF，见 lib/localPdf）：PDF 的文档编号（trailer 里的 /ID，两段：
+   * permanent = 文件第一次生成时定下、之后增量保存（Edge / Acrobat 存标注）不变；changing = 每次保存都换）、
+   * 元数据里的标题、第一页的文字（找 arXiv 印在页边的「arXiv:2011.03014v2 [astro-ph.CO] …」）
+   */
+  async identify({ docId }) {
+    const doc = docs.get(docId);
+    const M = native.pdfiumModule, P = M.pdfium, mm = native.memoryManager;
+    const docPtr = native.cache.getContext(doc.id).docPtr;
+    const fileId = (type) => {
+      const n = fn("FPDF_GetFileIdentifier")(docPtr, type, 0, 0);
+      if (n <= 1) return null;
+      const buf = mm.malloc(n);
+      try {
+        fn("FPDF_GetFileIdentifier")(docPtr, type, buf, n);
+        let hex = "";
+        for (let i = 0; i < n - 1; i++) hex += (P.getValue(buf + i, "i8") & 0xff).toString(16).padStart(2, "0");
+        return /^0*$/.test(hex) ? null : hex;
+      } finally { mm.free(buf); }
+    };
+    // embedpdf 包装过的 FPDF_GetMetaText：第二个参数（键名）直接传 JS 字符串（传指针会报 stringToUTF8Array expects a string）
+    const meta = (tag) => {
+      const n = M.FPDF_GetMetaText(docPtr, tag, 0, 0);
+      if (n <= 2) return "";
+      const buf = mm.malloc(n);
+      try {
+        M.FPDF_GetMetaText(docPtr, tag, buf, n);
+        let s = "";
+        for (let k = 0; k + 1 < n; k += 2) { const c = P.getValue(buf + k, "i16") & 0xffff; if (!c) break; s += String.fromCharCode(c); }
+        return s.trim();
+      } finally { mm.free(buf); }
+    };
+    let firstPage = "";
+    if (doc.pages.length) {
+      const { codes } = await ops.text({ docId, pageIndex: 0 });
+      for (const c of codes) if (c) firstPage += c === 2 ? "-" : String.fromCodePoint(c);
+    }
+    return { permanentId: fileId(0), changingId: fileId(1), title: meta("Title"), firstPage: firstPage.slice(0, 20000) };
+  },
   /** 调试用：wasm 堆的大小（PDFium 自己的内存都在这里面） */
   async mem() { return { fontLog, wasmHeapMB: native ? Math.round(native.pdfiumModule?.pdfium?.HEAPU8?.length / 1048576 || native.pdfium?.HEAPU8?.length / 1048576 || 0) : 0, keys: native ? Object.keys(native).slice(0, 12) : [] }; },
   async close({ docId }) {

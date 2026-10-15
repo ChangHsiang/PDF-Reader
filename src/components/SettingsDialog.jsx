@@ -147,7 +147,7 @@ export default function SettingsDialog({ onClose }) {
 
         <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar px-5 py-2">
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-2">阅读</div>
-          <Row title="打开 arXiv PDF 时用笔记阅读器" desc="关掉后 arXiv 的 PDF 用浏览器自带的阅读器打开">
+          <Row title="打开 PDF 时用笔记阅读器" desc="arXiv 论文和本地 PDF 文件（本地文件要在扩展管理页打开「允许访问文件网址」）。关掉后用浏览器自带的阅读器打开">
             <Switch on={s.intercept} onClick={() => setSettings({ intercept: !s.intercept })} />
           </Row>
           <div className="py-2.5">

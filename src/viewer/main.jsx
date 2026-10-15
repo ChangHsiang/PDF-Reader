@@ -6,9 +6,11 @@ import LoginForm from "../components/LoginForm";
 import { useSession } from "../lib/useSession";
 import { arxivIdFromUrl } from "../lib/pdfAnchor";
 import { registerViewerTab } from "../lib/tabRestore";
+import { isLocalPdfUrl, identifyLocalPdf, fileNameOf, FileAccessError } from "../lib/localPdf";
 
 /**
- * 阅读器页面：`viewer.html?url=https://arxiv.org/pdf/2301.12345v2[&panel=comments]`
+ * 阅读器页面：`viewer.html?url=https://arxiv.org/pdf/2301.12345v2[&panel=comments]`，
+ * 或者本地文件 `viewer.html?url=file:///E:/papers/xxx.pdf`（先认出是哪一篇，见 lib/localPdf）
  * background 的重定向规则、arXiv 摘要页上的按钮、弹窗里的列表都打开这一页。
  */
 
@@ -35,22 +37,59 @@ async function fetchTitle(id) {
   } catch { return null; }
 }
 
+const isLocal = isLocalPdfUrl(rawUrl);
+
+/** 本地文件读不到：多半是没给插件打开「允许访问文件网址」 */
+function FileAccessHelp() {
+  const open = () => chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
+  return (
+    <div className="h-screen flex items-center justify-center px-6 font-sans">
+      <div className="max-w-[460px] text-[13px] text-[#ddd] leading-relaxed">
+        <div className="text-[15px] text-[#fff] font-bold mb-2">读不到这个本地文件</div>
+        <div>用这个阅读器打开本地 PDF，需要先允许插件访问本地文件：</div>
+        <ol className="mt-2 mb-3 pl-5 list-decimal">
+          <li>打开<button onClick={open} className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[13px]">扩展管理页</button>里 PDF-Reader 的「详细信息」</li>
+          <li>打开「允许访问文件网址」</li>
+          <li>回到这里刷新</li>
+        </ol>
+        <a href={rawUrl} className="text-[#7ec8e3] underline">用浏览器自带的阅读器打开</a>
+        <div className="mt-1 text-[11.5px] text-[#9a9a9a] break-all">{fileNameOf(rawUrl)}</div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const session = useSession();
-  const target = normalize(rawUrl);
+  const [local, setLocal] = useState(null);      // 本地文件：{ paperKey, arxivId, name, title } | { error }
+  const target = isLocal ? (local?.paperKey ? { id: local.arxivId, url: rawUrl, paperKey: local.paperKey } : null) : normalize(rawUrl);
   const [title, setTitle] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
-    if (!target) return;
+    if (!isLocal) return;
+    document.title = fileNameOf(rawUrl);
+    identifyLocalPdf(rawUrl).then(setLocal).catch(e => setLocal({ error: e instanceof FileAccessError ? "access" : (e?.message || "打不开") }));
+  }, []);
+
+  useEffect(() => {
+    if (isLocal && local?.title && !local.arxivId) { setTitle(local.title); document.title = local.title; }
+    if (!target?.id) return;
     document.title = `arXiv:${target.id}`;
     fetchTitle(target.id).then(t => { if (t) { setTitle(t); document.title = t; } });
-  }, [target?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [target?.id, local]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (isLocal && !local) {
+    return <div className="h-screen flex items-center justify-center text-[13px] text-[#ddd] font-sans">正在打开 {fileNameOf(rawUrl)}…</div>;
+  }
+  if (isLocal && local.error) {
+    if (local.error === "access") return <FileAccessHelp />;
+    return <div className="h-screen flex items-center justify-center text-[13px] text-[#ddd] font-sans">打不开这个文件：{local.error}</div>;
+  }
   if (!target) {
     return (
       <div className="h-screen flex items-center justify-center text-[13px] text-[#ddd] font-sans text-center px-6 leading-relaxed">
-        这个阅读器目前只支持 arXiv 的论文。<br />
+        这个阅读器目前只支持 arXiv 的论文和本地 PDF 文件。<br />
         {rawUrl && <a href={rawUrl} className="text-[#7ec8e3] underline">直接打开原链接</a>}
       </div>
     );
@@ -59,7 +98,8 @@ function App() {
 
   return (
     <>
-      <PdfViewer url={target.url} title={title} session={session}
+      <PdfViewer url={target.url} paperKey={target.paperKey} localName={isLocal ? local.name : null}
+        title={title || (isLocal ? local.name : null)} session={session}
         onLogin={() => setLoginOpen(true)} initialPanel={initialPanel} />
       {loginOpen && !session && (
         <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4 animate-fade-in"

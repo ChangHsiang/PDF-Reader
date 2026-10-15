@@ -23,7 +23,7 @@ import { useUpdate, openTab } from "../lib/update";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey } from "../lib/refs";
-import { createPdfium } from "../lib/pdfium/client";
+import { sharedPdfium } from "../lib/pdfium/client";
 import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer";
 import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
 import { Avatar, Icon } from "./bits";
@@ -65,9 +65,8 @@ const savePos = (k, v) => {
 const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 3];
 
 /* PDFium（WebAssembly）跑在一个 Worker 里，整个扩展页共用一个（换论文不重启 wasm） */
-let pdfiumClient = null;
 let docSeq = 0;
-const getPdfium = () => (pdfiumClient ||= createPdfium());
+const getPdfium = sharedPdfium;
 
 const IconSidebar = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="9" y1="4" x2="9" y2="20" /></>;
 const IconMinus = <line x1="5" y1="12" x2="19" y2="12" />;
@@ -151,7 +150,7 @@ function SyncBadge({ uid, state, pending, onLogin, onSync }) {
   );
 }
 
-export default function PdfViewer({ url, title, session, onLogin, initialPanel }) {
+export default function PdfViewer({ url, paperKey: givenKey, localName, title, session, onLogin, initialPanel }) {
   const containerRef = useRef(null);
   const viewerElRef = useRef(null);
   const apiRef = useRef(null);        // { viewer, linkService, eventBus }
@@ -228,10 +227,13 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const uid = session?.uid || null;
   const me = session ? { id: session.uid, name: session.profile?.name || session.email,
                          username: session.profile?.username, avatar_url: session.profile?.avatar_url } : null;
-  const paperKey = useMemo(() => paperKeyFromUrl(url), [url]);
+  // 本地文件的身份由外面认好传进来（lib/localPdf：可能认出是某篇 arXiv 论文，也可能是 file:…）
+  const paperKey = useMemo(() => givenKey || paperKeyFromUrl(url), [givenKey, url]);
   const base = baseOf(paperKey);
   const commentKey = commentKeyOf(paperKey);
   const meta = useMemo(() => ({ title, url }), [title, url]);
+  /* arXiv 号（不带 arxiv: 前缀）：本地文件认不出是 arXiv 论文时为空 —— 复制公式（要 arXiv 源码）、INSPIRE 查参考文献这些就关掉 */
+  const arxivKey = /^arxiv:/.test(paperKey) ? paperKey.replace(/^arxiv:/, "") : "";
   const [myNote, setMyNote] = useState(null);
   const [mine, setMine] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -289,7 +291,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
     try { return !!sessionStorage.getItem("rh_upd_later"); } catch { return false; }
   });
   // 公式旁的「复制 LaTeX」按钮（components/EqCopy.js）
-  useEquationCopy(viewerElRef, apiRef, doc, paperKey.replace(/^arxiv:/, ""), settings.eqCopy);
+  useEquationCopy(viewerElRef, apiRef, doc, arxivKey, settings.eqCopy);
   const autoTransRef = useRef(false);
   autoTransRef.current = settings.autoTranslate;    // 划选监听只挂一次，靠 ref 读最新设置
   const [selPos, setSelPos] = useState(null);
@@ -1757,8 +1759,9 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   const download = async () => {
     if (!doc) return;
     const bytes = await doc.getData();
-    const id = paperKey.replace(/^arxiv:/, "").replace(/\//g, "_");
-    const name = `${id}${title ? ` - ${title}` : ""}`.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 150);
+    // 本地文件（认不出是 arXiv 的）：用原来的文件名
+    const id = arxivKey ? arxivKey.replace(/\//g, "_") : (localName || "document").replace(/\.pdf$/i, "");
+    const name = `${id}${title && title !== localName ? ` - ${title}` : ""}`.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 150);
     const href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
     const a = Object.assign(document.createElement("a"), { href, download: `${name}.pdf` });
     document.body.appendChild(a);
@@ -1777,7 +1780,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
         <div className="flex-1 basis-0 min-w-0 flex items-center gap-1">
           <TBtn onClick={() => setSideOpen(v => !v)} title="目录 / 缩略图 / 笔记" active={sideOpen}><Icon d={IconSidebar} /></TBtn>
           <div className="min-w-0 px-2 truncate text-[13px] text-[#e6e6e6] font-sans" title={title || undefined}>
-            {title || paperKey.replace(/^arxiv:/, "arXiv:")}
+            {title || localName || paperKey.replace(/^arxiv:/, "arXiv:")}
           </div>
         </div>
         <div className="shrink-0 flex items-center gap-1">
@@ -1919,7 +1922,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
               )}
               {refCard && (
                 <RefCard key={`${refCard.group.join(",")}@${refCard.current}`} {...refCard}
-                  arxivBase={base.replace(/^arxiv:/, "")}
+                  arxivBase={arxivKey ? base.replace(/^arxiv:/, "") : ""}
                   onClose={closeRefCard}
                   onJump={(entry) => {
                     // [1–3] 里没挂链接的那条（比如 2）没有目标名，就跳到它所在的那一页
@@ -1985,7 +1988,7 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
               <SplitPane doc={doc} main={apiRef} apiRef={splitApiRef} annotations={visibleAnns}
                 containerRef={splitContainerRef} viewerElRef={splitViewerElRef} onOverlay={onSplitOverlay}
                 onPick={pickSplit} activeId={activeId} hiddenId={editArea?.id || textEdit?.id} modeCls={toolCls}
-                arxivId={paperKey.replace(/^arxiv:/, "")} eqCopy={settings.eqCopy}
+                arxivId={arxivKey} eqCopy={settings.eqCopy}
                 onReady={setSplitReady} onView={setSplitView} />
               {splitOverlay && createPortal(<>{renderEdit("split")}{renderSel("split")}</>, splitOverlay)}
               {activePane === "split" && <div className="rh-pane-active" />}

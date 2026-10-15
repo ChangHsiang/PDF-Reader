@@ -26,6 +26,8 @@ import { rest, restRows } from "./session";
 
 const PREFIX = "paper:";
 export const baseOf = (paperKey) => splitPaperKey(paperKey).base;
+/** 本地文件的笔记（file:…，见 lib/localPdf）。认出是 arXiv 论文的本地文件用的是 arxiv: 的 key，不算 */
+export const isLocalKey = (key) => /^file:/.test(key || "");
 const skey = (base) => PREFIX + base;
 const now = () => new Date().toISOString();
 const empty = () => ({ notes: {}, anns: [] });
@@ -192,6 +194,7 @@ async function readJson(res) {
  */
 export async function syncPaper(base, uid) {
   if (!uid) return { ok: false, error: "未登录" };
+  if (isLocalKey(base)) return { ok: true };        // 本地文件（file:…）的笔记先只存本机，同步在下一步接上
 
   /* ① 拉 */
   const notes = await readJson(await rest(`paper_notes?user_id=eq.${uid}&${likeBase(base)}&select=${NOTE_COLS}`, { auth: true }));
@@ -367,6 +370,7 @@ export async function syncAll(uid) {
     `paper_notes?user_id=eq.${uid}&select=paper_key&order=updated_at.desc&limit=200`, { auth: true }));
   if (!remote) return { ok: false, error: "连不上服务器" };
   remote.forEach(n => bases.add(baseOf(n.paper_key)));
+  [...bases].filter(isLocalKey).forEach(b => bases.delete(b));
   let error = null;
   for (const b of bases) {
     const r = await syncPaper(b, uid);
@@ -406,6 +410,7 @@ export async function listLibrary(uid) {
  * 没登录也能看：RLS 对非 private 的行是放开的。
  */
 export async function fetchOthers(paperKey, uid) {
+  if (isLocalKey(paperKey)) return [];
   const base = baseOf(paperKey);
   const notes = (await readJson(await rest(
     `paper_notes?${likeBase(base)}&visibility=eq.public&select=${NOTE_COLS}&order=updated_at.desc&limit=50`,

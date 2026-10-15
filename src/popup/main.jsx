@@ -7,6 +7,7 @@ import { useSession } from "../lib/useSession";
 import { signOut } from "../lib/session";
 import { listLibrary, syncAll } from "../lib/notes";
 import { SITE_URL, profileUrl } from "../lib/config";
+import { fileNameOf } from "../lib/localPdf";
 
 /** 工具栏弹窗：账号、是否接管 arXiv PDF、我的笔记列表 */
 
@@ -19,6 +20,9 @@ function Popup() {
   const [intercept, setIntercept] = useState(true);
   const [sync, setSync] = useState({ busy: false, msg: "" });
   const [loginOpen, setLoginOpen] = useState(false);
+  // 插件能不能读本地文件（扩展管理页的「允许访问文件网址」）：不能的话提示一句怎么开
+  const [fileAccess, setFileAccess] = useState(true);
+  useEffect(() => { chrome.extension?.isAllowedFileSchemeAccess?.(setFileAccess); }, []);
 
   const refresh = useCallback(() => { listLibrary(uid).then(setLib); }, [uid]);
   useEffect(() => { if (session !== undefined) refresh(); }, [session, refresh]);
@@ -78,7 +82,7 @@ function Popup() {
 
       <div className="shrink-0 px-4 py-2.5 border-b border-[#00000059] flex flex-col gap-2">
         <label className="flex items-center gap-2 cursor-pointer select-none">
-          <span className="flex-1 text-[12.5px]">打开 arXiv PDF 时用笔记阅读器</span>
+          <span className="flex-1 text-[12.5px]">打开 arXiv / 本地 PDF 时用笔记阅读器</span>
           {/* 只有两个值 ⇒ 开关，点一下就翻 */}
           <button onClick={toggleIntercept} role="switch" aria-checked={intercept}
             className={`relative w-9 h-5 rounded-full border-none cursor-pointer transition-colors shrink-0
@@ -100,25 +104,41 @@ function Popup() {
         )}
       </div>
 
+      {!fileAccess && (
+        <div className="mx-4 mt-2.5 px-2.5 py-2 rounded-md bg-[#ffffff0d] text-[11.5px] leading-relaxed text-[#9a9a9a]">
+          想用它打开本地 PDF？在
+          <button onClick={() => chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` })}
+            className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[11.5px]">扩展管理页</button>
+          打开 PDF-Reader 的「允许访问文件网址」，之后双击 / 拖进浏览器的 PDF 都会用它打开。
+        </div>
+      )}
       <div className="px-4 pt-2.5 pb-1 text-[11.5px] text-[#9a9a9a] font-bold">我的笔记</div>
       <div className="flex-1 overflow-y-auto thin-scrollbar px-2 pb-2 min-h-[80px]">
         {lib === null ? null : lib.length === 0 ? (
           <div className="px-2 py-3 text-[12px] text-[#9a9a9a] leading-relaxed">
             还没有笔记。打开任意一篇 arXiv 论文的 PDF，选中文字就能高亮、划线、写批注。
           </div>
-        ) : lib.map(p => (
+        ) : lib.map(p => {
+          // 本地文件（file:…）：标「本地」，显示文件名；点它按原来的路径重新打开（文件挪走了阅读器会提示）
+          const local = /^file:/.test(p.base);
+          const fname = local && p.url ? fileNameOf(p.url) : null;
+          return (
           <button key={p.base} onClick={() => openViewer(p.url || `https://arxiv.org/pdf/${p.paperKey.replace(/^arxiv:/, "")}`)}
+            title={local && p.url ? decodeURI(p.url.replace(/^file:\/\/\/?/, "")) : undefined}
             className="w-full text-left px-2 py-2 rounded-lg bg-transparent border-none cursor-pointer hover:bg-[#ffffff14] block">
-            <div className="text-[12.5px] text-[#fff] leading-snug line-clamp-2">{p.title || p.base.replace(/^arxiv:/, "arXiv:")}</div>
+            <div className="text-[12.5px] text-[#fff] leading-snug line-clamp-2">{p.title || fname || p.base.replace(/^arxiv:/, "arXiv:")}</div>
             <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#9a9a9a]">
-              <span>{p.base.replace(/^arxiv:/, "arXiv:")}</span>
+              {local
+                ? <><span className="px-1 rounded bg-[#ffffff1a] text-[#c8c8c8]">本地</span><span className="truncate max-w-[150px]">{fname || "本地文件"}</span></>
+                : <span>{p.base.replace(/^arxiv:/, "arXiv:")}</span>}
               <span>{p.count} 条</span>
               {uid && p.pending > 0 && <span className="text-[#ffcf7a]">{p.pending} 待同步</span>}
               <span className="flex-1" />
               <TimeText ts={p.updated} />
             </div>
           </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -14,6 +14,18 @@ const VIEWER = chrome.runtime.getURL("viewer.html");
 const RULE_REDIRECT = 1;
 const RAW_BASE = 100000;        // 会话级放行规则：id = RAW_BASE + tabId
 
+/* 本地 PDF（file://…pdf）：转到阅读器。declarativeNetRequest 管不了 file:// 网址，所以看标签页的地址变化
+   （要在扩展管理页给插件打开「允许访问文件网址」，否则这里根本看不到 file:// 的地址）。
+   「用浏览器自带阅读器打开」的那个标签放行一次（rawFileTabs） */
+const rawFileTabs = new Set();
+chrome.tabs.onUpdated.addListener(async (tabId, info) => {
+  const u = info.url;
+  if (!u || !/^file:\/\/.+\.pdf(?:[?#].*)?$/i.test(u)) return;
+  if (rawFileTabs.has(tabId)) { rawFileTabs.delete(tabId); return; }
+  if (!(await getSettings()).intercept) return;
+  chrome.tabs.update(tabId, { url: `${VIEWER}?url=${encodeURIComponent(u)}` }).catch(() => {});
+});
+
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [RAW_BASE + tabId] }).catch(() => {});
   forgetViewerTab(tabId);            // 用户自己关的：不用在更新后重新打开
@@ -66,6 +78,12 @@ const handlers = {
   "viewer:raw": async (m, sender) => {
     const tabId = sender.tab?.id;
     if (tabId == null) return;
+    if (/^file:/i.test(m.url || "")) {                // 本地文件：放行这个标签这一次
+      rawFileTabs.add(tabId);
+      forgetViewerTab(tabId);
+      await chrome.tabs.update(tabId, { url: m.url });
+      return;
+    }
     await chrome.declarativeNetRequest.updateSessionRules({
       removeRuleIds: [RAW_BASE + tabId],
       addRules: [{
