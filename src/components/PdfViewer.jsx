@@ -694,15 +694,29 @@ export default function PdfViewer({ url, title, session, onLogin, initialPanel }
   /* 点标注弹出的编辑条。点别处 / Esc 收起 */
   useEffect(() => {
     if (!annMenu) return;
+    // 收起时标注的「选中」状态也一起取消（以前只收编辑条，标注一直是选中的样子）
     const close = (e) => {
       if (e.target?.closest?.(".rh-selbar") || e.target?.closest?.("[data-ann-id]")) return;
       setAnnMenu(null);
+      setActiveId(null);
     };
-    const onKey = (e) => { if (e.key === "Escape") setAnnMenu(null); };
+    const onKey = (e) => { if (e.key === "Escape") { setAnnMenu(null); setActiveId(null); } };
     window.addEventListener("pointerdown", close, true);
     window.addEventListener("keydown", onKey);
     return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", onKey); };
   }, [annMenu]);
+  /* 没有编辑条、但有标注是选中的（从笔记列表点过去的那种）：点正文别处 / Esc 也取消选中。
+     文本框、附注卡片开着的时候它们自己管 */
+  useEffect(() => {
+    if (!activeId || annMenu || textEdit || noteEdit) return;
+    const off = (e) => {
+      if (e.type === "keydown" ? e.key !== "Escape" : (e.target?.closest?.("[data-ann-id]") || e.target?.closest?.(".rh-selbar") || !e.target?.closest?.(".pdfViewer"))) return;
+      setActiveId(null);
+    };
+    window.addEventListener("pointerdown", off, true);
+    window.addEventListener("keydown", off);
+    return () => { window.removeEventListener("pointerdown", off, true); window.removeEventListener("keydown", off); };
+  }, [activeId, annMenu, textEdit, noteEdit]);
 
   /* ── 区域框选：在一页上拖一个框（不跨页），pointer 事件 + capture ── */
   useEffect(() => {
