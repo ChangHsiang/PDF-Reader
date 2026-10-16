@@ -20,7 +20,11 @@ const COLORS = {
   yellow: [255, 213, 0], red: [230, 30, 30], green: [64, 206, 120], blue: [80, 170, 255],
   pink: [255, 120, 180], purple: [180, 130, 255], black: [34, 34, 34],
 };
-const hex = (name) => `#${(COLORS[name] || COLORS.yellow).map(v => v.toString(16).padStart(2, "0")).join("")}`;
+/** 颜色名 → #rrggbb；tint < 1 时往白色里兑淡（tint = 原色占的比例） */
+const hex = (name, tint = 1) => `#${(COLORS[name] || COLORS.yellow).map(v => Math.round(255 - (255 - v) * tint).toString(16).padStart(2, "0")).join("")}`;
+/* 高亮在插件里是 34% 不透明的色块盖在页面上（PdfNotes），写成「正片叠底 + 原色」别的阅读器里会浓得多
+   （Chrome 里整条成了饱和的粉 / 黄）。改写成兑淡的颜色再叠底：白纸上就是插件里那个浅色，黑字照旧是黑的 */
+const HL_TINT = 0.34;
 const PX2PT = 72 / 96;          // 我们的「100% 时的像素」→ 点
 
 /** 归一化矩形 → 点（原点左上） */
@@ -59,9 +63,10 @@ export function toPdfAnnotations(anns, pages, author) {
     }
     if (kind === "highlight" || kind === "underline") {
       const segs = a.rects.map(r => box(r, W, H));
+      const c = hex(a.color, kind === "highlight" ? HL_TINT : 1);
       items.push({ pageIndex, annotation: { ...base,
         type: kind === "underline" ? PdfAnnotationSubtype.UNDERLINE : PdfAnnotationSubtype.HIGHLIGHT,
-        rect: union(segs), segmentRects: segs, strokeColor: hex(a.color), color: hex(a.color), opacity: 1,
+        rect: union(segs), segmentRects: segs, strokeColor: c, color: c, opacity: 1,
         ...(kind === "highlight" ? { blendMode: PdfBlendMode.Multiply } : {}) } });
     } else if (kind === "area") {
       const st = a.style || {};
@@ -95,7 +100,8 @@ export function toPdfAnnotations(anns, pages, author) {
         color: "transparent", opacity: 1 } });
     } else if (kind === "note") {
       const r = a.rects[0];
-      const replies = (a.style?.replies || []).map(x => `\n\n— ${x.name || ""}：${x.text || ""}`).join("");
+      // 回复的分隔用半角冒号：Chrome 的便签弹窗用 Helvetica 画，全角「：」会被吞掉（实测成了「Bobreply!」）
+      const replies = (a.style?.replies || []).map(x => `\n\n— ${x.name || ""}: ${x.text || ""}`).join("");
       items.push({ pageIndex, annotation: { ...base, contents: (a.body || "") + replies,
         type: PdfAnnotationSubtype.TEXT, icon: PdfAnnotationName.Comment,
         rect: { origin: { x: r.x * W, y: r.y * H }, size: { width: 18, height: 18 } }, color: hex(a.color), opacity: 1 } });
