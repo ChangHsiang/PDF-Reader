@@ -617,7 +617,6 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   const [rotMode, setRotModeRaw] = useState(() => localStorage.getItem("rh_rot_mode") === "page" ? "page" : "all");
   const setRotMode = (m) => { setRotModeRaw(m); localStorage.setItem("rh_rot_mode", m); };
   const rotateBtn = (dir) => (rotMode === "page" ? rotatePage(dir) : rotate(dir));
-  const resetPageRot = () => { const m = { ...pageRotRef.current }; delete m[vPage - 1]; applyPageRot(m); };
   const resetAllRot = () => {
     rotationRef.current = 0;
     setRotation(0);
@@ -1953,8 +1952,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         <TBtn onClick={() => rotateBtn(1)} disabled={!doc}
           title={rotMode === "page" ? `顺时针旋转第 ${vPage} 页（Ctrl+]）` : `顺时针旋转所有页（Ctrl+]）`}>
           <Icon d={rotMode === "page" ? IconRotateOne : IconRotate} /></TBtn>
-        <RotateMenu disabled={!doc} page={vPage} mode={rotMode} onMode={setRotMode} all={rotation} one={pageRot[vPage - 1] || 0}
-          anyPage={Object.keys(pageRot).length > 0} onResetPage={resetPageRot} onResetAll={resetAllRot} />
+        <RotateMenu disabled={!doc} mode={rotMode} onMode={setRotMode}
+          rotated={!!rotation || Object.keys(pageRot).length > 0} onReset={resetAllRot} />
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
         <TBtn onClick={() => runHistory("undo")} title="撤销（Ctrl+Z）" disabled={!hist.canUndo}><Icon d={IconUndo} /></TBtn>
         <TBtn onClick={() => runHistory("redo")} title="恢复（Ctrl+Y）" disabled={!hist.canRedo}><Icon d={IconRedo} /></TBtn>
@@ -2575,7 +2574,7 @@ function SplitMenu({ mode, disabled, onPick }) {
 }
 
 /** 旋转按钮旁的下拉：按钮转「所有页」还是「当前页」（选中的打勾，按钮图标跟着变）+ 转回原样（样式同分屏下拉） */
-function RotateMenu({ disabled, page, mode, onMode, all, one, anyPage, onResetPage, onResetAll }) {
+function RotateMenu({ disabled, mode, onMode, rotated, onReset }) {
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const panelRef = useRef(null);
@@ -2593,12 +2592,12 @@ function RotateMenu({ disabled, page, mode, onMode, all, one, anyPage, onResetPa
   const toggle = () => {
     if (pos) { setPos(null); return; }
     const r = btnRef.current.getBoundingClientRect();
-    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 90, window.innerWidth - 230)) });
+    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 40, window.innerWidth - 140)) });
   };
   const groups = [
-    [[() => onMode("all"), "旋转所有页", IconRotate, "", false, mode === "all"],
-     [() => onMode("page"), "只旋转当前页", IconRotateOne, "", false, mode === "page"]],
-    [[onResetPage, `第 ${page} 页转回来`, null, one ? `${one}°` : "", !one], [onResetAll, "全部转回原样", null, "", !all && !anyPage]],
+    [[() => onMode("all"), "所有页", IconRotate, "", false, mode === "all"],
+     [() => onMode("page"), "当前页", IconRotateOne, "", false, mode === "page"]],
+    [[onReset, "复原", null, "", !rotated]],
   ];
   return (
     <>
@@ -2611,7 +2610,7 @@ function RotateMenu({ disabled, page, mode, onMode, all, one, anyPage, onResetPa
       </button>
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
-          className="min-w-[210px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          className="min-w-[120px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
           {groups.map((g, gi) => (
             <div key={gi} className={gi ? "mt-1 pt-1 border-t border-[#ffffff1f]" : ""}>
               {g.map(([fn, label, icon, hint, off, on]) => (
