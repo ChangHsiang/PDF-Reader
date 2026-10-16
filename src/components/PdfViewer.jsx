@@ -28,6 +28,7 @@ import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey, paperCard } from "../lib/refs";
 import { citeData } from "../lib/cite";
+import { findBookmark, saveBookmark, removeBookmark, listCollections } from "../lib/library";
 import { sharedPdfium } from "../lib/pdfium/client";
 import { toPdfAnnotations } from "../lib/exportPdf";
 import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer";
@@ -1953,6 +1954,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
             title={selfCite === "none" ? "没查到这篇论文的引用信息" : "引用"}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
           </TBtn>
+          <SelfBookmark key={paperKey} uid={uid} disabled={!doc} lookup={lookupSelf} onLogin={onLogin} toast={showToast} />
         </div>
         <div className="shrink-0 flex items-center gap-1">
         <TBtn onClick={() => goPage(vPage - 1)} title="上一页" disabled={vPage <= 1}><Icon d={IconUp} /></TBtn>
@@ -2826,6 +2828,102 @@ function TitleMenu({ label, full, disabled, onProps, onRaw }) {
               <Icon d={icon} size={15} />{text}
             </button>
           ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * 收藏当前这篇（标题后、「引用」旁边的星）：和引用卡片上的「收藏」一样进 ResearchHub 的文献收藏（lib/library）。
+ * 这篇是哪条记录用「引用」那套查法（lookupSelf：arXiv 查 INSPIRE / S2，本地文件查 Crossref，有缓存）；
+ * 查不到的本地文件不能收藏。没收藏时点开「收藏到…」选收藏夹，收藏过的再点取消（实心黄星 = 已收藏）
+ */
+function SelfBookmark({ uid, disabled, lookup, onLogin, toast }) {
+  const [card, setCard] = useState(undefined);     // undefined 没查 / null 查不到 / 卡片
+  const [row, setRow] = useState(null);            // 收藏行（null = 没收藏）
+  const [pos, setPos] = useState(null);            // 「收藏到…」菜单的位置
+  const [cols, setCols] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+  const lookupRef = useRef(lookup);
+  lookupRef.current = lookup;
+  // 登录了才查收藏状态（卡片走缓存，打开论文 3 秒后的预取已经查过了）
+  useEffect(() => {
+    if (!uid || disabled) { setRow(null); return undefined; }
+    let alive = true;
+    lookupRef.current().then(async (c) => {
+      if (!alive) return;
+      setCard(c || null);
+      if (c) { const r = await findBookmark(c).catch(() => null); if (alive) setRow(r); }
+    }).catch(() => { if (alive) setCard(null); });
+    return () => { alive = false; };
+  }, [uid, disabled]);
+  useEffect(() => {
+    if (!pos) return undefined;
+    const close = (e) => { if (!panelRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setPos(null); };
+    const onKey = (e) => { if (e.key === "Escape") setPos(null); };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", onKey); };
+  }, [pos]);
+
+  const click = async () => {
+    if (!uid) { onLogin?.(); return; }
+    if (busy) return;
+    if (pos) { setPos(null); return; }
+    let c = card;
+    if (c === undefined) { setBusy(true); c = await lookupRef.current().catch(() => null); setCard(c || null); setBusy(false); }
+    if (!c) { toast?.("没查到这篇论文的信息，不能收藏", false); return; }
+    if (row) {
+      setBusy(true);
+      if (await removeBookmark(row.id)) { setRow(null); toast?.("已取消收藏"); } else toast?.("取消收藏失败", false);
+      setBusy(false);
+      return;
+    }
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 8, window.innerWidth - 240)) });
+    if (!cols) listCollections().then(setCols).catch(() => setCols([]));
+  };
+  const pick = async (colId, name) => {
+    setBusy(true);
+    try { setRow(await saveBookmark(card, colId)); setPos(null); toast?.(`已收藏到「${name}」`); }
+    catch (e) { toast?.(e.message || "收藏失败", false); }
+    setBusy(false);
+  };
+  const saved = !!row;
+  const item = "w-full h-8 flex items-center gap-2 pl-2.5 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap disabled:opacity-50";
+  return (
+    <>
+      <button ref={btnRef} onClick={click} disabled={disabled || card === null}
+        title={!uid ? "收藏（登录 ResearchHub 后可用）" : card === null ? "没查到这篇论文的信息，不能收藏" : saved ? "已收藏（点一下取消）" : "收藏"}
+        className={`h-7 min-w-7 px-1 rounded-md flex items-center justify-center border-none shrink-0
+          ${disabled || card === null ? "text-[#ffffff4d] bg-transparent cursor-not-allowed"
+            : saved ? "text-[#fbbc04] bg-transparent hover:bg-[#ffffff26] cursor-pointer"
+            : pos ? "text-[#fff] bg-[#ffffff33] cursor-pointer" : "text-[#e6e6e6] bg-transparent hover:bg-[#ffffff26] cursor-pointer"}`}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z" />
+        </svg>
+      </button>
+      {pos && (
+        <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
+          className="w-max min-w-[200px] max-w-[280px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          <div className="px-2.5 py-1 text-[11px] text-[#9a9a9a] font-sans">收藏到…</div>
+          <div className="max-h-[260px] overflow-y-auto thin-scrollbar">
+            <button className={item} disabled={busy} onClick={() => pick(null, "未分类")}>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
+              默认（未分类）
+            </button>
+            {cols?.length > 0 && <div className="my-1 border-t border-[#ffffff1f]" />}
+            {cols === null && <div className="px-2.5 py-1.5 text-[12px] text-[#8a8a8a]">…</div>}
+            {cols?.map(c => (
+              <button key={c.id} className={item} disabled={busy} onClick={() => pick(c.id, c.name)}>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>
+                <span className="truncate">{c.name}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </>
