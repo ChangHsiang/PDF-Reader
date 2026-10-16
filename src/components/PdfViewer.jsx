@@ -1946,14 +1946,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         {/* 三段：左边侧栏开关 + 标题（同 Edge / Chrome 的阅读器），中间翻页和缩放（左右两段等宽，所以它真的居中），右边工具 */}
         <div className="flex-1 basis-0 min-w-0 flex items-center gap-1">
           <TBtn onClick={() => setSideOpen(v => !v)} title="目录 / 缩略图 / 笔记" active={sideOpen}><Icon d={IconSidebar} /></TBtn>
-          {/* 点标题看「文档属性」（同 Edge 的文档属性；标题太长被截断时那里也有完整的） */}
-          <button onClick={() => doc && setPropsOpen(true)} disabled={!doc}
-            title={`${title ? `${title}
-` : ""}点击查看文档属性`}
-            className="min-w-0 h-7 px-2 rounded-md truncate text-[13px] text-[#e6e6e6] font-sans bg-transparent border-none text-left
-                       cursor-pointer hover:bg-[#ffffff1a] disabled:cursor-default disabled:hover:bg-transparent">
-            {title || localName || paperKey.replace(/^arxiv:/, "arXiv:")}
-          </button>
+          {/* 点标题弹下拉：文档属性、用浏览器自带的阅读器打开（同 Edge 的「⋯」菜单里那两项） */}
+          <TitleMenu label={title || localName || paperKey.replace(/^arxiv:/, "arXiv:")} full={title} disabled={!doc}
+            onProps={() => setPropsOpen(true)} onRaw={openRaw} />
           <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading" || selfCite === "none"}
             title={selfCite === "none" ? "没查到这篇论文的引用信息" : "引用"}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
@@ -2018,7 +2013,6 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         <TBtn onClick={enterFullscreen} title="全屏阅读（Esc 退出）" disabled={!doc}><Icon d={IconFull} /></TBtn>
         <TBtn onClick={download} title="下载 PDF" disabled={!doc}><Icon d={IconDownload} /></TBtn>
         <DownloadMenu disabled={!doc} onPlain={download} onAnnotated={downloadAnnotated} />
-        <TBtn onClick={openRaw} title="用浏览器自带的阅读器打开原文件"><Icon d={IconOpen} /></TBtn>
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
         <div className="relative">
           <TBtn onClick={() => setSettingsOpen(true)} title={upd.show ? `设置（有新版本 v${upd.latest.version}）` : "设置"}><Icon d={IconGear} /></TBtn>
@@ -2784,6 +2778,54 @@ function AccountMenu({ me, email, onLibrary }) {
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
             {armed ? "再点一下退出" : "退出登录"}
           </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 标题：点开下拉 —— 文档属性、用浏览器自带的阅读器打开（新标签）。标题太长被截断时指上去看得到全名 */
+function TitleMenu({ label, full, disabled, onProps, onRaw }) {
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+  useEffect(() => {
+    if (!pos) return;
+    const close = (e) => { if (!panelRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setPos(null); };
+    const onKey = (e) => { if (e.key === "Escape") setPos(null); };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", onKey); };
+  }, [pos]);
+  const toggle = () => {
+    if (pos) { setPos(null); return; }
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: Math.max(8, r.left) });
+  };
+  const items = [
+    [onProps, "文档属性", <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" /></>],
+    [onRaw, "用浏览器自带的阅读器打开", IconOpen],
+  ];
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} disabled={disabled} title={full || undefined}
+        className={`min-w-0 h-7 px-2 rounded-md flex items-center gap-1 text-[13px] text-[#e6e6e6] font-sans border-none text-left
+                    cursor-pointer disabled:cursor-default disabled:hover:bg-transparent
+                    ${pos ? "bg-[#ffffff26]" : "bg-transparent hover:bg-[#ffffff1a]"}`}>
+        <span className="truncate">{label}</span>
+        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"
+          strokeLinejoin="round" className="shrink-0 text-[#c8c8c8]"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {pos && (
+        <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
+          className="w-max p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          {items.map(([fn, text, icon]) => (
+            <button key={text} onClick={() => { setPos(null); fn(); }}
+              className="w-full h-8 flex items-center gap-2 pl-2.5 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
+                         border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap">
+              <Icon d={icon} size={15} />{text}
+            </button>
+          ))}
         </div>
       )}
     </>
