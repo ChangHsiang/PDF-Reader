@@ -24,7 +24,7 @@ import DocProps from "./DocProps";
 import CiteDialog from "./CiteDialog";
 import LibraryDialog from "./LibraryDialog";
 import { useUpdate, openTab } from "../lib/update";
-import { useSettings } from "../lib/settings";
+import { useSettings, setSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey, paperCard } from "../lib/refs";
 import { citeData } from "../lib/cite";
@@ -1990,7 +1990,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           {/* 点标题弹下拉：文档属性、用浏览器自带的阅读器打开（同 Edge 的「⋯」菜单里那两项） */}
           <TitleMenu label={title || localName || paperKey.replace(/^arxiv:/, "arXiv:")} full={title} disabled={!doc}
             onProps={() => setPropsOpen(true)} onRaw={openRaw}
-            onDownload={download} onDownloadAnnotated={downloadAnnotated} onPrint={printPdf} />
+            onDownload={download} onDownloadAnnotated={downloadAnnotated} onPrint={printPdf}
+            showAnnots={settings.showAnnots !== false} onToggleAnnots={() => setSettings({ showAnnots: settings.showAnnots === false })} />
           <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading" || selfCite === "none"}
             title={selfCite === "none" ? "没查到这篇论文的引用信息" : "引用"}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
@@ -2778,7 +2779,7 @@ function AccountMenu({ me, email, onLibrary }) {
 
 /** 标题：点开下拉 —— 下载（原文件 / 带我的标注）、打印、用浏览器自带的阅读器打开（新标签）、文档属性。
     标题太长被截断时指上去看得到全名 */
-function TitleMenu({ label, full, disabled, onProps, onRaw, onDownload, onDownloadAnnotated, onPrint }) {
+function TitleMenu({ label, full, disabled, onProps, onRaw, onDownload, onDownloadAnnotated, onPrint, showAnnots, onToggleAnnots }) {
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const panelRef = useRef(null);
@@ -2800,6 +2801,9 @@ function TitleMenu({ label, full, disabled, onProps, onRaw, onDownload, onDownlo
     [onDownloadAnnotated, "下载带我的标注的 PDF", <><path d="M12 4v11" /><polyline points="7 10 12 15 17 10" /><path d="M5 20h6" /><path d="M15 20l4-4 2 2-4 4h-2z" /></>],
     [onPrint, "打印", <><polyline points="6 9 6 3 18 3 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="7" /></>, "Ctrl+P"],
     null,
+    // 显示 / 隐藏所有标注（同设置 → 阅读 →「显示标注」；同 Chrome 阅读器「⋮」里的「注释」）：前面打勾表示开着
+    [onToggleAnnots, "显示标注", null, null, showAnnots],
+    null,
     [onRaw, "用浏览器自带的阅读器打开", IconOpen],
     [onProps, "文档属性", <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" /></>],
   ];
@@ -2820,7 +2824,9 @@ function TitleMenu({ label, full, disabled, onProps, onRaw, onDownload, onDownlo
             <button key={it[1]} onClick={() => { setPos(null); it[0](); }}
               className="w-full h-8 flex items-center gap-2 pl-2.5 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
                          border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap">
-              <Icon d={it[2]} size={15} /><span className="flex-1">{it[1]}</span>
+              {it[2] ? <Icon d={it[2]} size={15} />
+                : <span className="w-[15px] text-center text-[12px] text-[#7ec8e3]">{it[4] ? "✓" : ""}</span>}
+              <span className="flex-1">{it[1]}</span>
               {it[3] && <span className="ml-4 text-[11px] text-[#9a9a9a]">{it[3]}</span>}
             </button>
           ) : <div key={i} className="my-1 border-t border-[#ffffff1f]" />))}
