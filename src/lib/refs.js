@@ -366,6 +366,32 @@ async function fromCrossref(text) {
 
 /** INSPIRE 上这篇论文的参考文献表（按 label 分组）。不在 INSPIRE 上返回 null */
 const inspireCache = new Map();
+/**
+ * 正在看的这篇论文自己的卡片（工具栏「引用」用）：先按 arXiv 号问 INSPIRE，没有就问 Semantic Scholar。
+ * 本地文件（不是 arXiv 的）：按 PDF 里的标题 / 作者问 Crossref；都查不到就用 PDF 元数据凑一张
+ */
+const selfCache = new Map();
+export function paperCard({ arxivBase, title, author, year }) {
+  const key = arxivBase || `t:${title}`;
+  if (!selfCache.has(key)) {
+    const job = (async () => {
+      if (arxivBase) {
+        const d = await getJson(`${INSPIRE}?q=${encodeURIComponent(`arxiv:${arxivBase}`)}&fields=control_number`);
+        const recid = d?.hits?.hits?.[0]?.metadata?.control_number;
+        return (recid && await fromInspireRecord(recid)) || await fromS2(`arXiv:${arxivBase}`);
+      }
+      if (!title) return null;
+      const viaCr = await fromCrossref([author, title].filter(Boolean).join(" "));
+      if (viaCr && normT(viaCr.title) === normT(title)) return viaCr;
+      const names = (author || "").split(/\s*(?:;|,|\band\b)\s*/).filter(Boolean);
+      return card({ title, authors: authorLine(names), people: names.map(splitName), year: year || null });
+    })().catch(() => null);
+    selfCache.set(key, job.then((c) => { if (!c) selfCache.delete(key); return c; }));
+  }
+  return selfCache.get(key);
+}
+const normT = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+
 export function inspireReferences(arxivBase) {
   if (!inspireCache.has(arxivBase)) {
     inspireCache.set(arxivBase, (async () => {

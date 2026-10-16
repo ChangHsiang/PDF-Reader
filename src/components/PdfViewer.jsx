@@ -21,10 +21,11 @@ import RefCard from "./RefCard";
 import TranslatePop from "./TranslatePop";
 import SettingsDialog from "./SettingsDialog";
 import DocProps from "./DocProps";
+import CiteDialog from "./CiteDialog";
 import { useUpdate, openTab } from "../lib/update";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
-import { extractReferences, citeGroup, citeGroupRect, destKey } from "../lib/refs";
+import { extractReferences, citeGroup, citeGroupRect, destKey, paperCard } from "../lib/refs";
 import { sharedPdfium } from "../lib/pdfium/client";
 import { toPdfAnnotations } from "../lib/exportPdf";
 import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer";
@@ -627,6 +628,22 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     refitBoth();
   };
   const [propsOpen, setPropsOpen] = useState(false);
+  /* 「引用」这篇论文本身（同文献卡片里的「引用」，GB/T 7714 / MLA / APA + BibTeX 等）：
+     arXiv 的按编号查 INSPIRE / Semantic Scholar；本地文件按 PDF 元数据的标题 / 作者查 */
+  const [selfCite, setSelfCite] = useState(null);       // null | "loading" | card | "none"
+  const openSelfCite = async () => {
+    if (!doc) return;
+    setSelfCite("loading");
+    let meta = {};
+    if (!arxivKey) meta = await doc.props?.().catch(() => ({})) || {};
+    const c = await paperCard({
+      arxivBase: arxivKey ? arxivKey.replace(/v\d+$/, "") : null,
+      title: meta.Title || title || (localName || "").replace(/\.pdf$/i, ""), author: meta.Author,
+      year: /^(?:D:)?(\d{4})/.exec(meta.CreationDate || "")?.[1],
+    });
+    setSelfCite(c || "none");
+    if (!c) showToast("没查到这篇论文的引用信息", false);
+  };
   /* 设置「显示标注」：关掉时 PDF 文件里自带的注释不画（两栏都重画），我们自己的标注层由 .rh-hide-annots 藏起来 */
   const showAnnots = settings.showAnnots !== false;
   useEffect(() => {
@@ -1920,6 +1937,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
                        cursor-pointer hover:bg-[#ffffff1a] disabled:cursor-default disabled:hover:bg-transparent">
             {title || localName || paperKey.replace(/^arxiv:/, "arXiv:")}
           </button>
+          <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading"} title="引用这篇论文（GB/T 7714 / MLA / APA，可导出 BibTeX 等）">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
+          </TBtn>
         </div>
         <div className="shrink-0 flex items-center gap-1">
         <TBtn onClick={() => goPage(vPage - 1)} title="上一页" disabled={vPage <= 1}><Icon d={IconUp} /></TBtn>
@@ -2084,6 +2104,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           </div>
 
           {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+          {selfCite && typeof selfCite === "object" && <CiteDialog card={selfCite} onClose={() => setSelfCite(null)} />}
           {propsOpen && <DocProps doc={doc} url={url} localName={localName} paperKey={paperKey}
             annCount={mineView.length} onClose={() => setPropsOpen(false)} />}
           {toast && (
