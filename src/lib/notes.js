@@ -87,6 +87,62 @@ function touchNote(d, paperKey, meta = {}) {
   return n;
 }
 
+/* ── 撤销 / 恢复 ────────────────────────────────────────────────────
+   记的是「我对标注做的每一步」：新建、修改、删除，各存一份改之前 / 改之后的整行快照。
+   撤销 = 把这一行写回改之前（之前不存在就删掉），恢复 = 写回改之后。只记在这个页面的内存里（同 Edge：刷新就清空），
+   同步拉回来的改动不走这三个函数，不会进来。写回时标成待推，同步照常把结果推上云端 */
+const hist = { undo: [], redo: [], group: null, subs: new Set() };
+const HIST_MAX = 100;
+const snap = (x) => (x ? JSON.parse(JSON.stringify(x)) : null);
+const emitHist = () => hist.subs.forEach(f => f());
+export function watchHistory(fn) { hist.subs.add(fn); return () => hist.subs.delete(fn); }
+export const historyState = () => ({ canUndo: hist.undo.length > 0, canRedo: hist.redo.length > 0 });
+function record(step) {
+  if (hist.group) { hist.group.push(step); return; }
+  hist.undo.push([step]);
+  if (hist.undo.length > HIST_MAX) hist.undo.shift();
+  hist.redo = [];
+  emitHist();
+}
+/** fn 里的几次改动算一步（一次划选跨了几页、存成几条，撤销时一起撤） */
+export async function historyGroup(fn) {
+  if (hist.group) return fn();
+  const g = hist.group = [];
+  try { return await fn(); } finally {
+    hist.group = null;
+    if (g.length) { hist.undo.push(g); if (hist.undo.length > HIST_MAX) hist.undo.shift(); hist.redo = []; emitHist(); }
+  }
+}
+/** 把 id 这一行写成 target（null = 删掉；有云端副本的留墓碑，同 deleteAnnotation） */
+function putRow(d, id, target, note) {
+  const i = d.anns.findIndex(x => x.id === id);
+  const cur = i >= 0 ? d.anns[i] : null;
+  if (!target) {
+    if (!cur) return;
+    if (cur.account) Object.assign(cur, { deleted: true, sync: "dirty", updated_at: now() });
+    else d.anns.splice(i, 1);
+    return;
+  }
+  const row = { ...snap(target), account: cur?.account ?? target.account ?? null, sync: "dirty", updated_at: now() };
+  delete row.deleted;
+  if (cur) d.anns[i] = row; else d.anns.push(row);
+  if (note && !d.notes[row.paper_key]) d.notes[row.paper_key] = snap(note);
+}
+async function applyHistory(from, to, dir) {
+  const steps = from.pop();
+  if (!steps) return false;
+  const list = dir === "undo" ? [...steps].reverse() : steps;
+  for (const s of list) {
+    const id = (s.before || s.after).id;
+    await mutate(baseOf(s.paperKey), (d) => putRow(d, id, dir === "undo" ? s.before : s.after, s.note));
+  }
+  to.push(steps);
+  emitHist();
+  return true;
+}
+export const undo = () => applyHistory(hist.undo, hist.redo, "undo");
+export const redo = () => applyHistory(hist.redo, hist.undo, "redo");
+
 export function addAnnotation(paperKey, meta, fields) {
   const row = {
     id: crypto.randomUUID(), paper_key: paperKey, account: null, sync: "dirty",
@@ -99,8 +155,9 @@ export function addAnnotation(paperKey, meta, fields) {
     created_at: now(), updated_at: now(),
   };
   return mutate(baseOf(paperKey), (d) => {
-    touchNote(d, paperKey, meta);
+    const note = touchNote(d, paperKey, meta);
     d.anns.push(row);
+    record({ paperKey, before: null, after: snap(row), note: snap(note) });
     return row;
   });
 }
@@ -109,7 +166,11 @@ export function updateAnnotation(paperKey, id, patch) {
   return mutate(baseOf(paperKey), (d) => {
     const a = d.anns.find(x => x.id === id);
     if (!a) return null;
+    // 什么都没变（点了同一个颜色、文本框没改字就点走）：不写、也不记一步撤销
+    if (Object.keys(patch).every(k => JSON.stringify(a[k] ?? null) === JSON.stringify(patch[k] ?? null))) return a;
+    const before = snap(a);
     Object.assign(a, patch, { sync: "dirty", updated_at: now() });
+    record({ paperKey, before, after: snap(a), note: snap(d.notes[a.paper_key]) });
     return a;
   });
 }
@@ -119,6 +180,7 @@ export function deleteAnnotation(paperKey, id) {
     const i = d.anns.findIndex(x => x.id === id);
     if (i < 0) return false;
     const a = d.anns[i];
+    record({ paperKey, before: snap(a), after: null, note: snap(d.notes[a.paper_key]) });
     if (a.account) Object.assign(a, { deleted: true, sync: "dirty", updated_at: now() });   // 云端还有，留墓碑
     else d.anns.splice(i, 1);
     return true;

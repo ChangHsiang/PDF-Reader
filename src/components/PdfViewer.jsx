@@ -6,7 +6,7 @@ import {
 import {
   baseOf, loadMine, watchPaper, addAnnotation, updateAnnotation, deleteAnnotation, setVisibility,
   copyAnnotation, copiedSourceIds, syncPaper, fetchOthers, exportMarkdown, normTags, isLocalKey,
-  setShareExcluded, loadHiddenOthers, setHiddenOther,
+  setShareExcluded, loadHiddenOthers, setHiddenOther, undo, redo, historyGroup, historyState, watchHistory,
 } from "../lib/notes";
 import { countComments } from "../lib/comments";
 import { sitePaperUrl } from "../lib/config";
@@ -90,6 +90,8 @@ const IconGear = <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0
 const IconNote = <><path d="M20 15.5a1.5 1.5 0 0 1-1.5 1.5H8.5L4 20.5V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5z" /><path d="M8 8.5h8M8 12.5h5" /></>;
 const IconSplit = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="12" y1="4" x2="12" y2="20" /></>;
 const IconSplitV = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="12" x2="21" y2="12" /></>;
+const IconUndo = <><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></>;
+const IconRedo = <><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></>;
 const IconChat = <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />;
 
 const TBtn = ({ onClick, title, disabled, active, children }) => (
@@ -1103,7 +1105,6 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   useEffect(() => { penStyleRef.current = penStyle; savePenStyle(penStyle); }, [penStyle]);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
-  const inkUndo = useRef([]);                 // 本次会话画的笔迹，Ctrl+Z 依次撤
   const mineRef = useRef(mine);
   mineRef.current = mine;
   const saveInkRef = useRef(null);
@@ -1111,7 +1112,6 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     const row = await addAnnotation(paperKey, meta, {
       page, kind: "ink", color: penStyleRef.current.color, rects: [stroke], quote: null,
     });
-    inkUndo.current.push({ id: row.id, paper_key: paperKey });
     await reload();
     bump();
   };
@@ -1181,11 +1181,6 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     };
     const onKey = (e) => {
       if (e.key === "Escape") { setTool("text"); return; }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        const last = inkUndo.current.pop();
-        if (last) eraseRef.current(last);
-      }
     };
     el.addEventListener("pointerdown", down);
     el.addEventListener("pointermove", move);
@@ -1293,7 +1288,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     }
   };
   const saveAnchors = async (anchors, extra = {}) => {
-    for (const a of anchors) await addAnnotation(paperKey, meta, { ...a, ...extra });
+    // 一次划选跨了几页会存成几条：算一步，撤销时一起撤
+    await historyGroup(async () => { for (const a of anchors) await addAnnotation(paperKey, meta, { ...a, ...extra }); });
     clearSel();
     reload(); bump();
   };
@@ -1439,6 +1435,33 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     runFind(queryRef.current, false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onSplit]);
+
+  /* ── 撤销 / 恢复（lib/notes 的 undo / redo）──────────────────────────
+     撤的是标注的新建、修改、删除（同 Edge：刷新页面就清空）。Ctrl+Z 撤销，Ctrl+Y / Ctrl+Shift+Z 恢复；
+     光标在输入框、文本框、批注编辑里时让给浏览器自己的撤销（撤的是正在打的字） */
+  const [hist, setHist] = useState(historyState);
+  useEffect(() => watchHistory(() => setHist(historyState())), []);
+  const runHistory = async (dir) => {
+    if (!(await (dir === "undo" ? undo() : redo()))) return;
+    setAnnMenu(null);
+    await reload();
+    bump();
+  };
+  const runHistoryRef = useRef(runHistory);
+  runHistoryRef.current = runHistory;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k !== "z" && k !== "y") return;
+      const t = e.target;
+      if (t?.closest?.("input, textarea, [contenteditable=''], [contenteditable='true']")) return;
+      e.preventDefault();
+      runHistoryRef.current(k === "y" || e.shiftKey ? "redo" : "undo");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Ctrl/⌘+F 打开文档内搜索（不然会落到浏览器的页面搜索，搜不到没渲染的页）
   useEffect(() => {
@@ -1871,6 +1894,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           <span className="pr-0.5">%</span>
         </div>
         <ZoomMenu zoom={vZoom} mode={vMode} onPick={setScale} />
+        <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
+        <TBtn onClick={() => runHistory("undo")} title="撤销（Ctrl+Z）" disabled={!hist.canUndo}><Icon d={IconUndo} /></TBtn>
+        <TBtn onClick={() => runHistory("redo")} title="恢复（Ctrl+Y）" disabled={!hist.canRedo}><Icon d={IconRedo} /></TBtn>
         </div>
 
         <div className="flex-1 basis-0 min-w-0 flex items-center justify-end gap-1">
