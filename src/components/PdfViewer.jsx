@@ -629,8 +629,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   };
   const [propsOpen, setPropsOpen] = useState(false);
   /* 「引用」这篇论文本身（同文献卡片里的「引用」，GB/T 7714 / MLA / APA + BibTeX 等）：
-     arXiv 的按编号查 INSPIRE / Semantic Scholar；本地文件按 PDF 元数据的标题 / 作者查 */
+     arXiv 的按编号查 INSPIRE / Semantic Scholar；本地文件按 PDF 元数据的标题 / 作者查 Crossref，查不到就不给引用 */
   const [selfCite, setSelfCite] = useState(null);       // null | "loading" | card | "none"
+  useEffect(() => { setSelfCite(null); }, [paperKey]);      // 换了论文：重新查（没查到的那篇按钮是灰的）
   const openSelfCite = async () => {
     if (!doc) return;
     setSelfCite("loading");
@@ -639,7 +640,6 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     const c = await paperCard({
       arxivBase: arxivKey ? arxivKey.replace(/v\d+$/, "") : null,
       title: meta.Title || title || (localName || "").replace(/\.pdf$/i, ""), author: meta.Author,
-      year: /^(?:D:)?(\d{4})/.exec(meta.CreationDate || "")?.[1],
     });
     setSelfCite(c || "none");
     if (!c) showToast("没查到这篇论文的引用信息", false);
@@ -1937,7 +1937,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
                        cursor-pointer hover:bg-[#ffffff1a] disabled:cursor-default disabled:hover:bg-transparent">
             {title || localName || paperKey.replace(/^arxiv:/, "arXiv:")}
           </button>
-          <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading"} title="引用">
+          <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading" || selfCite === "none"}
+            title={selfCite === "none" ? "没查到这篇论文的引用信息" : "引用"}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
           </TBtn>
         </div>
