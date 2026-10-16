@@ -2368,7 +2368,7 @@ function ZoomMenu({ zoom, mode, onPick }) {
       </button>
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
-          className="min-w-[150px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          className="w-max p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
           {ZOOM_PRESETS.map(z => (
             <Item key={z} label={`${Math.round(z * 100)}%`} onClick={() => pick(z)}
               on={!isFit && Math.abs(zoom - z) < 0.005} />
@@ -2557,7 +2557,7 @@ function SplitMenu({ mode, disabled, onPick }) {
       </button>
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
-          className="min-w-[150px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          className="w-max p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
           {items.map(([v, label, icon]) => (
             <button key={v} onClick={() => { onPick(v); setPos(null); }}
               className="w-full h-8 flex items-center gap-2 pl-2 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
@@ -2610,12 +2610,12 @@ function RotateMenu({ disabled, mode, onMode, rotated, onReset }) {
       </button>
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
-          className="min-w-[120px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          className="w-max p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
           {groups.map((g, gi) => (
             <div key={gi} className={gi ? "mt-1 pt-1 border-t border-[#ffffff1f]" : ""}>
               {g.map(([fn, label, icon, hint, off, on]) => (
                 <button key={label} disabled={off} onClick={() => { fn(); setPos(null); }}
-                  className="w-full h-8 flex items-center gap-2 pl-2 pr-3 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
+                  className="w-full h-8 flex items-center gap-2 pl-2 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
                              border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent">
                   <span className="w-4 text-[#7ec8e3] text-[12px] text-center">{on ? "✓" : ""}</span>
                   <span className="w-[15px] flex justify-center">{icon && <Icon d={icon} size={15} />}</span>
@@ -2654,7 +2654,7 @@ function DownloadMenu({ disabled, onPlain, onAnnotated }) {
   };
   const items = [
     [onPlain, "下载原文件", "PDF 原样，不带标注"],
-    [onAnnotated, "下载带我的标注的 PDF", "高亮、框选、手写、批注写进文件，Edge / Acrobat / Zotero 都能看能改"],
+    [onAnnotated, "下载带我的标注的 PDF", "标注写进文件，其他阅读器也能看"],
   ];
   return (
     <>
@@ -2667,10 +2667,10 @@ function DownloadMenu({ disabled, onPlain, onAnnotated }) {
       </button>
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
-          className="w-[240px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          className="w-max p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
           {items.map(([fn, label, desc]) => (
             <button key={label} onClick={() => { setPos(null); fn(); }}
-              className="w-full flex flex-col items-start gap-0.5 px-2.5 py-1.5 rounded-md text-left bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a]">
+              className="w-full flex flex-col items-start gap-0.5 px-3 py-1.5 rounded-md text-left bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a]">
               <span className="text-[13px] font-sans text-[#e6e6e6]">{label}</span>
               <span className="text-[11px] font-sans text-[#9a9a9a] leading-snug">{desc}</span>
             </button>
