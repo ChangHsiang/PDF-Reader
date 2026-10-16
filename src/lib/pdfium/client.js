@@ -19,8 +19,9 @@ export function createPdfium() {
   });
   return {
     open: (docId, buffer) => call("open", { docId, buffer }, [buffer]),
-    render: (docId, pageIndex, scale, rect) => call("render", { docId, pageIndex, scale, rect }),
-    renderRect: (docId, pageIndex, scale, rect) => call("renderRect", { docId, pageIndex, scale, rect }),
+    render: (docId, pageIndex, scale, rect, annots = true) => call("render", { docId, pageIndex, scale, rect, annots }),
+    renderRect: (docId, pageIndex, scale, rect, annots = true) => call("renderRect", { docId, pageIndex, scale, rect, annots }),
+    props: (docId) => call("props", { docId }),
     outline: (docId) => call("outline", { docId }),
     links: (docId, pageIndex) => call("links", { docId, pageIndex }),
     text: (docId, pageIndex) => call("text", { docId, pageIndex }),

@@ -49,8 +49,10 @@ export class PdfiumDocument {
   outline() { return this.pdf.outline(this.docId); }
   links(pageIndex) { return this.pdf.links(this.docId, pageIndex); }
   /** 渲染整页或一块，返回 ImageBitmap（调用方用完要 close） */
-  render(pageIndex, scale) { return this.pdf.render(this.docId, pageIndex, scale); }
-  renderRect(pageIndex, scale, rect) { return this.pdf.renderRect(this.docId, pageIndex, scale, rect); }
+  render(pageIndex, scale, annots = true) { return this.pdf.render(this.docId, pageIndex, scale, undefined, annots); }
+  renderRect(pageIndex, scale, rect, annots = true) { return this.pdf.renderRect(this.docId, pageIndex, scale, rect, annots); }
+  /** 文档属性（信息字典 + PDF 版本），见 worker 的 props */
+  props() { return this.pdf.props(this.docId); }
   /** 具名目标（名字以 prefix 开头的），见 worker 的 namedDests */
   namedDests(prefix) { return this.pdf.namedDests(this.docId, prefix); }
   /** 一页的字符（缓存）：{ codes, boxes, flags }，见 worker 的 text() */
@@ -75,6 +77,7 @@ export class PdfiumViewer {
     this._scaleValue = "page-actual";
     this._page = 1;
     this._rot = 0;                       // 显示旋转：0 / 90 / 180 / 270（顺时针）
+    this._annots = true;                 // 画不画 PDF 文件里自带的注释（设置「显示标注」）
     this._pageRot = {};                  // 单独转的页：{ 页下标: 角度 }，叠在整体角度上
     this._raf = 0;
     this._detailTimer = 0;
@@ -101,6 +104,13 @@ export class PdfiumViewer {
     const preset = /^(page-|auto)/.test(this._scaleValue) ? this._scaleValue : null;
     this._applyScale(preset ? this._resolve(preset) : this._scale, preset);
     this.eventBus.dispatch("rotationchanging", { source: this, rotation: this._rot });
+  }
+  /** 显示 / 隐藏 PDF 文件里自带的注释：整页重画（细节画布也作废） */
+  setAnnotations(on) {
+    if (this._annots === !!on) return;
+    this._annots = !!on;
+    for (const v of this.views) { v.detailKey = null; if (v.detail) { v.detail.remove(); v.detail = null; } }
+    this.refresh();
   }
   get pageRotations() { return { ...this._pageRot }; }
   /** 单独转某几页（{ 页下标: 角度 }，整张表替换）：叠在整体角度上。只重排，不重画 */
@@ -272,7 +282,7 @@ export class PdfiumViewer {
       const px = v.size.width * full * v.size.height * full;
       const s = px > MAX_PIXELS ? full * Math.sqrt(MAX_PIXELS / px) : full;   // 超过上限：打底画低一点
       v.renderingState = 1;
-      const { bitmap, width, height } = await this.doc.render(v.index, s);
+      const { bitmap, width, height } = await this.doc.render(v.index, s, this._annots);
       if (scale !== this._scale || this.views[v.index] !== v) { bitmap.close(); }
       else {
         if (!v.canvas) {
@@ -323,7 +333,7 @@ export class PdfiumViewer {
       if (v.detailKey === key) continue;
       const scale = this._scale;
       const dpr = window.devicePixelRatio || 1;
-      const { bitmap, width, height } = await this.doc.renderRect(v.index, k * dpr, rect);
+      const { bitmap, width, height } = await this.doc.renderRect(v.index, k * dpr, rect, this._annots);
       if (scale !== this._scale || !v.canvas) { bitmap.close(); continue; }
       const c = v.detail || document.createElement("canvas");
       c.className = "detailView";

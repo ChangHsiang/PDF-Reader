@@ -91,20 +91,21 @@ const ops = {
     return { pageCount: doc.pageCount, pages: doc.pages.map(p => ({ index: p.index, size: p.size, rotation: p.rotation, crop: p.boxes?.crop || null })) };
   },
   /** 渲染整页（或其中一块 rect，单位 PDF 点、原点左上），返回 ImageBitmap（零拷贝转给主线程） */
-  async render({ docId, pageIndex, scale, rect }) {
+  /* annots：要不要画 PDF 文件里自带的注释（设置里「显示标注」关掉时不画） */
+  async render({ docId, pageIndex, scale, rect, annots = true }) {
     const doc = docs.get(docId);
     const page = doc.pages[pageIndex];
-    const opts = { scaleFactor: scale, dpr: 1, withAnnotations: true };
+    const opts = { scaleFactor: scale, dpr: 1, withAnnotations: annots };
     const img = await run(rect ? native.renderPageRect(doc, page, rect, opts) : native.renderPageRaw(doc, page, opts));
     const data = img.data instanceof Uint8ClampedArray ? img.data : new Uint8ClampedArray(img.data.buffer || img.data);
     const bmp = await createImageBitmap(new ImageData(data, img.width, img.height));
     return { bitmap: bmp, width: img.width, height: img.height, transfer: [bmp] };
   },
   /** 渲染一块（放大后只画看得见的那块）：rect 是页面坐标（PDF 点，原点左上，按显示方向） */
-  async renderRect({ docId, pageIndex, scale, rect }) {
+  async renderRect({ docId, pageIndex, scale, rect, annots = true }) {
     const doc = docs.get(docId);
     const r = { origin: { x: rect.x, y: rect.y }, size: { width: rect.w, height: rect.h } };
-    const img = await run(native.renderPageRect(doc, doc.pages[pageIndex], r, { scaleFactor: scale, dpr: 1, withAnnotations: true }));
+    const img = await run(native.renderPageRect(doc, doc.pages[pageIndex], r, { scaleFactor: scale, dpr: 1, withAnnotations: annots }));
     const data = img.data instanceof Uint8ClampedArray ? img.data : new Uint8ClampedArray(img.data.buffer || img.data);
     const bmp = await createImageBitmap(new ImageData(data, img.width, img.height));
     return { bitmap: bmp, width: img.width, height: img.height, transfer: [bmp] };
@@ -244,6 +245,30 @@ const ops = {
       for (const c of codes) if (c) firstPage += c === 2 ? "-" : String.fromCodePoint(c);
     }
     return { permanentId: fileId(0), changingId: fileId(1), title: meta("Title"), firstPage: firstPage.slice(0, 20000) };
+  },
+  /** 文档属性（点阅读器左上角的标题）：信息字典里的几项 + PDF 版本（14 → "1.4"） */
+  async props({ docId }) {
+    const doc = docs.get(docId);
+    const M = native.pdfiumModule, P = M.pdfium, mm = native.memoryManager;
+    const docPtr = native.cache.getContext(doc.id).docPtr;
+    const meta = (tag) => {
+      const n = M.FPDF_GetMetaText(docPtr, tag, 0, 0);
+      if (n <= 2) return "";
+      const buf = mm.malloc(n);
+      try {
+        M.FPDF_GetMetaText(docPtr, tag, buf, n);
+        let s = "";
+        for (let k = 0; k + 1 < n; k += 2) { const c = P.getValue(buf + k, "i16") & 0xffff; if (!c) break; s += String.fromCharCode(c); }
+        return s.trim();
+      } finally { mm.free(buf); }
+    };
+    let version = null;
+    const vp = mm.malloc(4);
+    try { if (fn("FPDF_GetFileVersion")(docPtr, vp)) { const v = P.getValue(vp, "i32"); if (v > 0) version = `${Math.floor(v / 10)}.${v % 10}`; } }
+    catch { /* 没有这个导出就不显示 */ } finally { mm.free(vp); }
+    const out = { version };
+    for (const k of ["Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate"]) out[k] = meta(k);
+    return out;
   },
   /**
    * 导出带标注的 PDF：把原文件另开一份（不动正在看的那份），按 items 建标准的 PDF 注释

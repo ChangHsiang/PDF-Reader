@@ -20,6 +20,7 @@ import PaperComments from "./PaperComments";
 import RefCard from "./RefCard";
 import TranslatePop from "./TranslatePop";
 import SettingsDialog from "./SettingsDialog";
+import DocProps from "./DocProps";
 import { useUpdate, openTab } from "../lib/update";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
@@ -625,6 +626,12 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     [apiRef.current?.viewer, splitApiRef.current?.viewer].filter(Boolean).forEach(v => { v.setPageRotations({}); v.setRotation(0); });
     refitBoth();
   };
+  const [propsOpen, setPropsOpen] = useState(false);
+  /* 设置「显示标注」：关掉时 PDF 文件里自带的注释不画（两栏都重画），我们自己的标注层由 .rh-hide-annots 藏起来 */
+  const showAnnots = settings.showAnnots !== false;
+  useEffect(() => {
+    [apiRef.current?.viewer, splitApiRef.current?.viewer].filter(Boolean).forEach(v => v.setAnnotations(showAnnots));
+  }, [showAnnots, doc, splitReady]);
   const stepZoom = (dir) => {
     const i = ZOOMS.findIndex(z => z > vZoom + 0.001);
     const next = dir > 0
@@ -1905,9 +1912,14 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         {/* 三段：左边侧栏开关 + 标题（同 Edge / Chrome 的阅读器），中间翻页和缩放（左右两段等宽，所以它真的居中），右边工具 */}
         <div className="flex-1 basis-0 min-w-0 flex items-center gap-1">
           <TBtn onClick={() => setSideOpen(v => !v)} title="目录 / 缩略图 / 笔记" active={sideOpen}><Icon d={IconSidebar} /></TBtn>
-          <div className="min-w-0 px-2 truncate text-[13px] text-[#e6e6e6] font-sans" title={title || undefined}>
+          {/* 点标题看「文档属性」（同 Edge 的文档属性；标题太长被截断时那里也有完整的） */}
+          <button onClick={() => doc && setPropsOpen(true)} disabled={!doc}
+            title={`${title ? `${title}
+` : ""}点击查看文档属性`}
+            className="min-w-0 h-7 px-2 rounded-md truncate text-[13px] text-[#e6e6e6] font-sans bg-transparent border-none text-left
+                       cursor-pointer hover:bg-[#ffffff1a] disabled:cursor-default disabled:hover:bg-transparent">
             {title || localName || paperKey.replace(/^arxiv:/, "arXiv:")}
-          </div>
+          </button>
         </div>
         <div className="shrink-0 flex items-center gap-1">
         <TBtn onClick={() => goPage(vPage - 1)} title="上一页" disabled={vPage <= 1}><Icon d={IconUp} /></TBtn>
@@ -1988,7 +2000,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       </div>
 
       {/* 页面颜色（护眼）的类挂在这一层：正文和左侧栏的缩略图都在它里面，一起变色 */}
-      <div className={`relative flex-1 flex min-h-0 rh-paper-${settings.paper || "white"} ${settings.showLinks ? "rh-show-links" : ""}`}>
+      <div className={`relative flex-1 flex min-h-0 rh-paper-${settings.paper || "white"} ${settings.showLinks ? "rh-show-links" : ""} ${settings.showAnnots === false ? "rh-hide-annots" : ""}`}>
         {/* 左侧栏：绝对定位盖在阅读区上，transform 滑进滑出（不改正文宽度，所以页面不会跟着重排 / 跳动）。
             关着的时候也挂着（inert + 移出视口）：再打开时目录展开状态、笔记筛选条件都还在，
             缩略图在视口外不会被 IntersectionObserver 触发渲染 */}
@@ -2072,6 +2084,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           </div>
 
           {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+          {propsOpen && <DocProps doc={doc} url={url} localName={localName} paperKey={paperKey}
+            annCount={mineView.length} onClose={() => setPropsOpen(false)} />}
           {toast && (
             <div className={`absolute left-1/2 -translate-x-1/2 bottom-5 z-[60] max-w-[80%] px-3.5 py-2 rounded-lg text-[12.5px] font-sans
                             bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in

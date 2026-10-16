@@ -170,6 +170,9 @@ export default function SettingsDialog({ onClose }) {
           <Row title="公式旁显示「复制 LaTeX」按钮" desc="带编号的公式左边一颗小按钮，复制的是 arXiv 源码里的 LaTeX（作者自定义的宏已展开）">
             <Switch on={s.eqCopy} onClick={() => setSettings({ eqCopy: !s.eqCopy })} />
           </Row>
+          <Row title="显示标注" desc="高亮、框、笔迹、文本框、附注，以及 PDF 文件里本来就有的注释。关掉可以看干净的原文">
+            <Switch on={s.showAnnots !== false} onClick={() => setSettings({ showAnnots: s.showAnnots === false })} />
+          </Row>
           <Row title="标出所有链接" desc="有的论文只给文献引用上色，公式 / 图 / 章节的引用看不出是链接。打开后所有链接下面画一道淡色虚线">
             <Switch on={s.showLinks} onClick={() => setSettings({ showLinks: !s.showLinks })} />
           </Row>
