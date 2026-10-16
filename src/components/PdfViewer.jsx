@@ -1937,7 +1937,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
                        cursor-pointer hover:bg-[#ffffff1a] disabled:cursor-default disabled:hover:bg-transparent">
             {title || localName || paperKey.replace(/^arxiv:/, "arXiv:")}
           </button>
-          <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading"} title="引用这篇论文（GB/T 7714 / MLA / APA，可导出 BibTeX 等）">
+          <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading"} title="引用">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
           </TBtn>
         </div>
