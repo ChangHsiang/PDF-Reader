@@ -1810,7 +1810,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       const { items, skipped } = toPdfAnnotations(anns, doc.pages, me?.name || "我");
       const bytes = await doc.getData();
       const { bytes: out, failed } = await sharedPdfium().exportAnnotated(bytes.buffer, items);
-      saveBytes(out, `${fileBase()}（标注）.pdf`);
+      saveBytes(out, `${fileBase()} (annotated).pdf`);
       const miss = skipped + failed;
       showToast(`已导出 ${items.length - failed} 条标注${miss ? `，${miss} 条没导出（做于这篇的其它版本、位置对不上，或格式不支持）` : ""}`);
     } catch (e) {
