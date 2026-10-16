@@ -13,6 +13,7 @@
  * 加了 9px 透明边框，而我们又在 index.css 里把它改回了 content-box —— 两个盒子
  * 差 18px，拿错了整层高亮就会往右下偏，越往右下差得越多（当初文字层错位一模一样）。
  */
+import { clientToNorm, clientRectToNorm } from "./pdfium/rotate";
 
 const CTX = 32;   // 前后上下文各取多少字
 
@@ -83,14 +84,8 @@ export function anchorsFromSelection(sel, container) {
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     const hit = boxes.find(b => cx >= b.box.left && cx <= b.box.right && cy >= b.box.top && cy <= b.box.bottom);
     if (!hit) continue;
-    const { box } = hit;
     const list = byPage.get(hit.num) || [];
-    list.push({
-      x: (r.left - box.left) / box.width,
-      y: (r.top - box.top) / box.height,
-      w: r.width / box.width,
-      h: r.height / box.height,
-    });
+    list.push(clientRectToNorm(hit.el, r, hit.box));     // 转过的页：屏幕上的矩形换回页面方向（rotate.js）
     byPage.set(hit.num, list);
   }
   if (!byPage.size) return [];
@@ -110,14 +105,12 @@ export function anchorsFromSelection(sel, container) {
  */
 export function areaAnchor(pageEl, rect) {
   const box = pageBox(pageEl);
-  const L = box.left + rect.x * box.width, T = box.top + rect.y * box.height;
-  const R = L + rect.w * box.width, B = T + rect.h * box.height;
   const words = [];
   pageEl.querySelectorAll(".textLayer span").forEach(sp => {
     if (sp.children.length) return;                    // 只认叶子，免得父子各算一遍
     const r = sp.getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    if (cx >= L && cx <= R && cy >= T && cy <= B && sp.textContent.trim()) words.push(sp.textContent);
+    const [u, v] = clientToNorm(pageEl, r.left + r.width / 2, r.top + r.height / 2, box);
+    if (u >= rect.x && u <= rect.x + rect.w && v >= rect.y && v <= rect.y + rect.h && sp.textContent.trim()) words.push(sp.textContent);
   });
   const quote = words.join(" ").replace(/\s+/g, " ").trim().slice(0, 500) || null;
   const round = (v) => +Math.min(1, Math.max(0, v)).toFixed(5);

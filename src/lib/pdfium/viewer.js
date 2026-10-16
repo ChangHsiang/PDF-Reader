@@ -2,7 +2,7 @@
  * 基于 PDFium 的阅读器内核，替换 pdf.js 的 PDFViewer。
  *
  * **对外故意和 pdf.js 的 PDFViewer 长得一样**（只做这个项目用到的那部分），这样上面那一大堆功能不用改：
- * - DOM：.pdfViewer > .page[data-page-number] > .canvasWrapper > canvas，外加 .annotationLayer（链接）。
+ * - DOM：.pdfViewer > .pageSlot > .page[data-page-number] > .canvasWrapper > canvas，外加 .annotationLayer（链接）。
  *   高亮层、框选、附注、公式按钮……都是往 .page 里挂东西、按 .canvasWrapper 的盒子算比例坐标
  * - 属性：currentScale / currentScaleValue（数字或 page-actual / page-width / page-height / page-fit / auto）、
  *   currentPageNumber、pagesCount、getPageView(i).renderingState、refresh()
@@ -16,10 +16,13 @@
  *   （同 pdf.js 的 detail view），滚停之后再补，不在滚动中途画
  * - 坐标：PDFium 的页面坐标原点在左上、按显示方向（已经算上 CropBox 和 /Rotate），单位 PDF 点；
  *   CSS 像素 = 点 × 96/72 × 缩放，和 pdf.js 一致（标注存的比例坐标两边通用，第 1 步验证过）
+ * - 旋转（setRotation）：每页外面套一个 .pageSlot 占位（转过之后的大小），.page 本身照旧按不旋转的大小排，
+ *   用 transform 转进槽里。屏幕坐标 ↔ 页面坐标的换算见 rotate.js；排版（offsetTop / 高度）一律量槽
  */
 
 import { buildTextLayer, installSelectionHelper } from "./textLayer";
 import { PdfiumFind } from "./find";
+import { clientRectToNorm } from "./rotate";
 
 export const PT2PX = 96 / 72;
 const MAX_PIXELS = 16 * 1024 * 1024;     // 整页画布的像素上限（超过就改用打底 + 细节画布）
@@ -71,6 +74,7 @@ export class PdfiumViewer {
     this._scale = 1;
     this._scaleValue = "page-actual";
     this._page = 1;
+    this._rot = 0;                       // 显示旋转：0 / 90 / 180 / 270（顺时针）
     this._raf = 0;
     this._detailTimer = 0;
     this._busy = false;                  // Worker 一次只排一个渲染，近的先画
@@ -89,6 +93,14 @@ export class PdfiumViewer {
   get currentScaleValue() { return this._scaleValue; }
   set currentScaleValue(v) { this._setScale(v); }
   get currentPageNumber() { return this._page; }
+  get rotation() { return this._rot; }
+  /** 旋转显示（只转看的方向，不改文件）。保住当前看着的那一页；自动倍数（适合宽度……）按转过之后的尺寸重算 */
+  setRotation(deg) {
+    this._rot = ((deg % 360) + 360) % 360;
+    const preset = /^(page-|auto)/.test(this._scaleValue) ? this._scaleValue : null;
+    this._applyScale(preset ? this._resolve(preset) : this._scale, preset);
+    this.eventBus.dispatch("rotationchanging", { source: this, rotation: this._rot });
+  }
   set currentPageNumber(n) { this.scrollToPage(n); }
   getPageView(i) { return this.views[i]; }
 
@@ -101,14 +113,17 @@ export class PdfiumViewer {
     if (this.find) this.find.texts = null;
     if (!doc) return;
     this.views = doc.pages.map((p, i) => {
+      const slot = document.createElement("div");
+      slot.className = "pageSlot";
       const div = document.createElement("div");
       div.className = "page";
       div.dataset.pageNumber = String(i + 1);
       const wrap = document.createElement("div");
       wrap.className = "canvasWrapper";
       div.appendChild(wrap);
-      this.viewer.appendChild(div);
-      return { index: i, id: i + 1, div, wrap, canvas: null, detail: null, links: null, renderingState: 0, renderedScale: 0, size: p.size };
+      slot.appendChild(div);
+      this.viewer.appendChild(slot);
+      return { index: i, id: i + 1, slot, div, wrap, canvas: null, detail: null, links: null, renderingState: 0, renderedScale: 0, size: p.size };
     });
     this._applyScale(this._scale, null);
     this.eventBus.dispatch("pagesinit", { source: this });
@@ -118,7 +133,8 @@ export class PdfiumViewer {
   _resolve(v) {
     const first = this.doc?.pages[this._page - 1] || this.doc?.pages[0];
     if (!first) return 1;
-    const pw = first.size.width * PT2PX, ph = first.size.height * PT2PX;
+    const side = this._rot % 180 ? ["height", "width"] : ["width", "height"];
+    const pw = first.size[side[0]] * PT2PX, ph = first.size[side[1]] * PT2PX;
     const cw = this.container.clientWidth - 40, chh = this.container.clientHeight - 20;   // 留出页边和滚动条
     switch (v) {
       case "page-actual": return 1;
@@ -148,15 +164,23 @@ export class PdfiumViewer {
     const anchor = this._anchor();
     this._scale = scale;
     this.viewer.style.setProperty("--scale-factor", String(scale * PT2PX));
+    const rot = this._rot, B = 18;           // B：.page 两边 9px 透明边框
     for (const v of this.views) {
-      v.div.style.width = `${v.size.width * PT2PX * scale}px`;
-      v.div.style.height = `${v.size.height * PT2PX * scale}px`;
+      const w = v.size.width * PT2PX * scale, h = v.size.height * PT2PX * scale;
+      v.div.style.width = `${w}px`;
+      v.div.style.height = `${h}px`;
+      const W = w + B, H = h + B;            // 页面的外框（含边框）
+      v.slot.style.width = `${rot % 180 ? H : W}px`;
+      v.slot.style.height = `${rot % 180 ? W : H}px`;
+      v.div.style.transform = rot === 90 ? `translate(${H}px,0) rotate(90deg)` : rot === 180 ? `translate(${W}px,${H}px) rotate(180deg)`
+        : rot === 270 ? `translate(0,${W}px) rotate(270deg)` : "";
+      if (rot) v.div.dataset.rot = String(rot); else delete v.div.dataset.rot;
       v.renderingState = v.renderedScale === scale ? v.renderingState : 0;
       if (v.detail) { v.detail.remove(); v.detail = null; }
     }
     if (anchor) {
       const v = this.views[anchor.index];
-      this.container.scrollTop = v.div.offsetTop + anchor.frac * v.div.offsetHeight - anchor.offset;
+      this.container.scrollTop = v.slot.offsetTop + anchor.frac * v.slot.offsetHeight - anchor.offset;
     }
     this.eventBus.dispatch("scalechanging", { source: this, scale, presetValue: preset });
     this.update();
@@ -164,16 +188,17 @@ export class PdfiumViewer {
 
   _anchor() {
     const top = this.container.scrollTop;
-    const v = this.views.find(v => v.div.offsetTop + v.div.offsetHeight > top);
-    if (!v || !v.div.offsetHeight) return null;
-    return { index: v.index, frac: (top - v.div.offsetTop) / v.div.offsetHeight, offset: 0 };
+    const v = this.views.find(v => v.slot.offsetTop + v.slot.offsetHeight > top);
+    if (!v || !v.slot.offsetHeight) return null;
+    return { index: v.index, frac: (top - v.slot.offsetTop) / v.slot.offsetHeight, offset: 0 };
   }
 
   scrollToPage(n, top = null) {
     const v = this.views[n - 1];
     if (!v) return;
-    const y = top == null ? 0 : top * PT2PX * this._scale;
-    this.container.scrollTop = v.div.offsetTop + y - 6;
+    // 页内位置只在不旋转时有意义（转过之后「往下多少点」不再是屏幕上的往下）
+    const y = top == null || this._rot ? 0 : top * PT2PX * this._scale;
+    this.container.scrollTop = v.slot.offsetTop + y - 6;
     this.update();
   }
 
@@ -192,11 +217,11 @@ export class PdfiumViewer {
     // 当前页：视口里露出最多的那一页
     let best = this._page, bestArea = -1;
     for (const v of this.views) {
-      const a = v.div.offsetTop, b = a + v.div.offsetHeight;
+      const a = v.slot.offsetTop, b = a + v.slot.offsetHeight;
       const vis = Math.min(b, top + h) - Math.max(a, top);
       if (vis > bestArea) { bestArea = vis; best = v.id; }
       v.near = b > lo && a < hi;
-      if (!v.near && v.canvas && Math.abs(v.div.offsetTop - top) > h * 4) this._release(v);   // 很远了：释放画布
+      if (!v.near && v.canvas && Math.abs(a - top) > h * 4) this._release(v);   // 很远了：释放画布
     }
     if (best !== this._page) {
       this._page = best;
@@ -224,7 +249,7 @@ export class PdfiumViewer {
     if (this._busy || !this.doc) return;
     const mid = this.container.scrollTop + this.container.clientHeight / 2;
     const todo = this.views.filter(v => v.near && v.renderedScale !== this._scale)
-      .sort((a, b) => Math.abs(a.div.offsetTop + a.div.offsetHeight / 2 - mid) - Math.abs(b.div.offsetTop + b.div.offsetHeight / 2 - mid));
+      .sort((a, b) => Math.abs(a.slot.offsetTop + a.slot.offsetHeight / 2 - mid) - Math.abs(b.slot.offsetTop + b.slot.offsetHeight / 2 - mid));
     const v = todo[0];
     if (!v) return;
     this._busy = true;
@@ -271,12 +296,14 @@ export class PdfiumViewer {
     const cb = this.container.getBoundingClientRect();
     for (const v of this.views) {
       if (!v.lowRes || v.renderedScale !== this._scale) continue;
-      const a = v.div.offsetTop, b = a + v.div.offsetHeight;
+      const a = v.slot.offsetTop, b = a + v.slot.offsetHeight;
       if (b < top || a > top + h) { if (v.detail) { v.detail.remove(); v.detail = null; } continue; }
-      const pr = v.wrap.getBoundingClientRect();
-      // 页面上看得见的那一块（CSS 像素，相对页面左上），四周多留 1/4 屏
-      const x0 = Math.max(0, cb.left - pr.left - w * 0.25), y0 = Math.max(0, cb.top - pr.top - h * 0.25);
-      const x1 = Math.min(pr.width, cb.right - pr.left + w * 0.25), y1 = Math.min(pr.height, cb.bottom - pr.top + h * 0.25);
+      // 页面上看得见的那一块（四周多留 1/4 屏），先在屏幕上框出来，再换成页面方向的 CSS 像素（转过的页要换算，见 rotate.js）
+      const vis = { left: cb.left - w * 0.25, top: cb.top - h * 0.25, right: cb.right + w * 0.25, bottom: cb.bottom + h * 0.25 };
+      const n = clientRectToNorm(v.div, vis);
+      const pr = { width: v.wrap.offsetWidth, height: v.wrap.offsetHeight };
+      const x0 = Math.max(0, n.x) * pr.width, y0 = Math.max(0, n.y) * pr.height;
+      const x1 = Math.min(1, n.x + n.w) * pr.width, y1 = Math.min(1, n.y + n.h) * pr.height;
       if (x1 <= x0 || y1 <= y0) continue;
       const k = PT2PX * this._scale;          // CSS 像素 / 点
       const rect = { x: x0 / k, y: y0 / k, w: (x1 - x0) / k, h: (y1 - y0) / k };
@@ -327,7 +354,7 @@ export class PdfiumViewer {
     if (performance.now() - this._lastScroll < 200) { this._scheduleText(); return; }
     const mid = this.container.scrollTop + this.container.clientHeight / 2;
     const todo = this.views.filter(v => v.near && v.textData && v.text !== "done")
-      .sort((a, b) => Math.abs(a.div.offsetTop + a.div.offsetHeight / 2 - mid) - Math.abs(b.div.offsetTop + b.div.offsetHeight / 2 - mid));
+      .sort((a, b) => Math.abs(a.slot.offsetTop + a.slot.offsetHeight / 2 - mid) - Math.abs(b.slot.offsetTop + b.slot.offsetHeight / 2 - mid));
     for (const v of todo) {
       if (!v.textNodes) {
         const { layer, nodes } = buildTextLayer(v.textData, v.size);

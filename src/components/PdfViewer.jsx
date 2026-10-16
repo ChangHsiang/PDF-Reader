@@ -27,6 +27,7 @@ import { extractReferences, citeGroup, citeGroupRect, destKey } from "../lib/ref
 import { sharedPdfium } from "../lib/pdfium/client";
 import { toPdfAnnotations } from "../lib/exportPdf";
 import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer";
+import { clientToNorm, clientRectToNorm, normRectToClient, pageSizePx, localPlacement } from "../lib/pdfium/rotate";
 import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
 import { Avatar, Icon } from "./bits";
 
@@ -90,6 +91,7 @@ const IconGear = <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0
 const IconNote = <><path d="M20 15.5a1.5 1.5 0 0 1-1.5 1.5H8.5L4 20.5V5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5z" /><path d="M8 8.5h8M8 12.5h5" /></>;
 const IconSplit = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="12" y1="4" x2="12" y2="20" /></>;
 const IconSplitV = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="12" x2="21" y2="12" /></>;
+const IconRotate = <><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1" /><polyline points="20.5 3.5 20.5 8.5 15.5 8.5" /></>;
 const IconUndo = <><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></>;
 const IconRedo = <><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></>;
 const IconChat = <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />;
@@ -479,9 +481,10 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         eventBus.on("pagesinit", () => {
           // 上次看到哪儿就回到哪儿（缩放方式也一样）；第一次打开默认 100%（纸面原尺寸），不按宽度撑满
           const saved = loadPos(paperKey);
+          if (rotationRef.current) viewer.setRotation(rotationRef.current);    // 换了文档（重新加载）：角度照旧
           viewer.currentScaleValue = saved?.scale || "page-actual";
           const v = saved?.page && viewer.views[saved.page - 1];
-          if (v) { viewer.container.scrollTop = v.div.offsetTop + (saved.frac || 0) * v.div.offsetHeight; viewer.update(); }
+          if (v) { viewer.container.scrollTop = v.slot.offsetTop + (saved.frac || 0) * v.slot.offsetHeight; viewer.update(); }
           if (alive) setZoom(viewer.currentScale);
         });
         eventBus.on("pagechanging", (e) => { if (alive) setPage(e.pageNumber); });
@@ -579,6 +582,17 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   const setScale = (v) => {
     if (splitOpen && splitReady) { fitBoth(String(v)); return; }
     const a = act(); if (a) a.viewer.currentScaleValue = String(v);
+  };
+  /* 旋转（同 Edge：每点一下顺时针转 90°，只转显示方向，不改文件；刷新回到不转）。
+     分屏时两栏一起转；「适合宽度 / 页面」按转过之后的尺寸重算，两栏照旧一样大 */
+  const [rotation, setRotation] = useState(0);
+  const rotationRef = useRef(0);
+  const rotate = (dir = 1) => {
+    const r = (rotationRef.current + (dir > 0 ? 90 : 270)) % 360;
+    rotationRef.current = r;              // 连点几下：每下都在上一下的基础上转
+    setRotation(r);
+    [apiRef.current?.viewer, splitApiRef.current?.viewer].filter(Boolean).forEach(v => v.setRotation(r));
+    refitBoth();
   };
   const stepZoom = (dir) => {
     const i = ZOOMS.findIndex(z => z > vZoom + 0.001);
@@ -747,8 +761,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     const clamp = (v) => Math.min(1, Math.max(0, v));
     const rectOf = (e) => {
       const { box, x0, y0 } = st;
-      const x1 = clamp((e.clientX - box.left) / box.width);
-      const y1 = clamp((e.clientY - box.top) / box.height);
+      const [x1, y1] = clientToNorm(st.pageEl, e.clientX, e.clientY, box).map(clamp);   // 转过的页也对（rotate.js）
       return { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
     };
     const paintGhost = (r) => {
@@ -780,10 +793,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       ghost.style.cssText = "position:absolute;z-index:2;pointer-events:none;box-sizing:border-box;" +
         `border:${width}px dashed ${rgba(color, 0.95)};background:${rgba(color, 0.08)};border-radius:2px`;
       pageEl.appendChild(ghost);
-      st = {
-        pageEl, box, ghost, pid: e.pointerId,
-        x0: clamp((e.clientX - box.left) / box.width), y0: clamp((e.clientY - box.top) / box.height),
-      };
+      const [x0, y0] = clientToNorm(pageEl, e.clientX, e.clientY, box).map(clamp);
+      st = { pageEl, box, ghost, pid: e.pointerId, x0, y0 };
       paintGhost({ x: st.x0, y: st.y0, w: 0, h: 0 });
       try { el.setPointerCapture(e.pointerId); } catch { /* 老浏览器 */ }
     };
@@ -792,16 +803,15 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       if (!st || e.pointerId !== st.pid) return;
       const r = rectOf(e);
       const { box, pageEl, ghost } = st;
-      const tiny = r.w * box.width < 10 || r.h * box.height < 10;   // 手抖点了一下
+      const px = pageSizePx(pageEl);
+      const tiny = r.w * px.w < 10 || r.h * px.h < 10;   // 手抖点了一下
       const vb = P.viewerEl?.getBoundingClientRect();
       if (tiny || !vb) { end(); return; }
       end(true);                       // 虚线框留着，直到存好（clearSel 里删）
       ghostRef.current = ghost;
       /* 默认样式已经选好了 ⇒ 松手直接存，不再弹颜色条让人再选一遍；
          存完自动选中它，可以马上拖动 / 缩放 / 改样式 */
-      const top = box.top + r.y * box.height;
-      saveAreaRef.current(areaAnchor(pageEl, r), floatPos({ left: box.left + r.x * box.width, width: r.w * box.width, top,
-                                                            bottom: top + r.h * box.height }, vb, 120));
+      saveAreaRef.current(areaAnchor(pageEl, r), floatPos(normRectToClient(pageEl, r, box), vb, 120));
     };
     const onKey = (e) => { if (e.key === "Escape") { end(); clearSel(); setTool("text"); } };
     el.addEventListener("pointerdown", down);
@@ -873,17 +883,19 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     const el = P.container;
     /* 新文本框的大小：一行高；宽度至少放得下占位提示「在此处开始键入…」（约 10 个字）——
        原来写死 220px，字号一大提示就折成两行（踩过） */
+    /* 都按页面方向算（转过的页上文本框跟着页面转，同 Edge），见 rotate.js */
     const geom = (pageEl, e) => {
-      const box = pageCanvasBox(pageEl);
+      const px = pageSizePx(pageEl);
       const st = textStyleRef.current;
       const k = parseFloat(P.viewerEl.style.getPropertyValue("--scale-factor")) || 1.333;
       const fontPx = st.size * k;
-      const wPx = Math.min(Math.max(200, fontPx * 10 + 16), box.width);
+      const wPx = Math.min(Math.max(200, fontPx * 10 + 16), px.w);
       const hPx = fontPx * 1.3 + 4;
       // 光标落在框里：左边留 6px，竖直方向在第一行中间
-      const left = Math.min(Math.max(box.left, e.clientX - 6), box.right - wPx);
-      const top = Math.min(Math.max(box.top, e.clientY - hPx / 2), box.bottom - hPx);
-      return { box, st, left, top, wPx, hPx };
+      const [u, v] = clientToNorm(pageEl, e.clientX, e.clientY);
+      const x = Math.min(Math.max(0, u - 6 / px.w), 1 - wPx / px.w);
+      const y = Math.min(Math.max(0, v - hPx / 2 / px.h), 1 - hPx / px.h);
+      return { px, st, x, y, wPx, hPx };
     };
 
     /* 跟着鼠标的虚线框：告诉你点下去文本框会放在哪儿（参照 Edge）。直接改 DOM，不走 React —— 每次移动都重渲染太浪费 */
@@ -895,10 +907,11 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     const move = (e) => {
       const pageEl = e.target?.closest?.(".page");
       if (!pageEl || textEditRef.current || e.target?.closest?.("[data-ann-id]")) { hideGhost(); return; }
-      const { left, top, wPx, hPx } = geom(pageEl, e);
-      const vb = P.viewerEl.getBoundingClientRect();
+      const { x, y, wPx, hPx } = geom(pageEl, e);
+      const pl = localPlacement(pageEl, x, y, P.viewerEl.getBoundingClientRect());
       Object.assign(ghost.style, {
-        display: "block", left: `${left - vb.left}px`, top: `${top - vb.top}px`, width: `${wPx}px`, height: `${hPx}px`,
+        display: "block", left: `${pl.left}px`, top: `${pl.top}px`, width: `${wPx}px`, height: `${hPx}px`,
+        transform: pl.transform || "", transformOrigin: "0 0",
       });
     };
 
@@ -911,11 +924,11 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       e.preventDefault();
       setAnnMenu(null);
       hideGhost();
-      const { box, st, left, top, wPx } = geom(pageEl, e);
+      const { px, st, x, y, wPx } = geom(pageEl, e);
       setEditPane(P.key);
       setTextEdit({
         id: null, paper_key: paperKey, page: Number(pageEl.dataset.pageNumber),
-        rect: { x: (left - box.left) / box.width, y: (top - box.top) / box.height, w: wPx / box.width, h: 0 },
+        rect: { x, y, w: wPx / px.w, h: 0 },
         body: "", color: st.color, style: { size: st.size, spacing: st.spacing }, orig: "",
       });
     };
@@ -989,13 +1002,12 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     return forPanes((P) => {
     const el = P.container;
     /* 图标放下去的位置：鼠标在页面上时，跟着一个和图标一样大的虚线框（同「添加文本」） */
+    /* 图标左上角在页面上的比例坐标（页面方向；图标本身在高亮层里跟着页面转） */
     const where = (pageEl, e) => {
-      const box = pageCanvasBox(pageEl);
-      return {
-        box,
-        left: Math.min(Math.max(box.left, e.clientX - NOTE_SIZE / 2), box.right - NOTE_SIZE),
-        top: Math.min(Math.max(box.top, e.clientY - NOTE_SIZE / 2), box.bottom - NOTE_SIZE),
-      };
+      const px = pageSizePx(pageEl);
+      const [u, v] = clientToNorm(pageEl, e.clientX, e.clientY);
+      const fw = NOTE_SIZE / px.w, fh = NOTE_SIZE / px.h;
+      return { x: Math.min(Math.max(0, u - fw / 2), 1 - fw), y: Math.min(Math.max(0, v - fh / 2), 1 - fh), fw, fh };
     };
     const ghost = document.createElement("div");
     ghost.style.cssText = `position:absolute;z-index:44;pointer-events:none;box-sizing:border-box;display:none;width:${NOTE_SIZE}px;height:${NOTE_SIZE}px;` +
@@ -1005,9 +1017,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     const move = (e) => {
       const pageEl = e.target?.closest?.(".page");
       if (!pageEl || noteEditRef.current || e.target?.closest?.("[data-ann-id]")) { hideGhost(); return; }
-      const { left, top } = where(pageEl, e);
-      const vb = P.viewerEl.getBoundingClientRect();
-      Object.assign(ghost.style, { display: "block", left: `${left - vb.left}px`, top: `${top - vb.top}px` });
+      const { x, y } = where(pageEl, e);
+      const pl = localPlacement(pageEl, x, y, P.viewerEl.getBoundingClientRect());
+      Object.assign(ghost.style, { display: "block", left: `${pl.left}px`, top: `${pl.top}px`, transform: pl.transform || "", transformOrigin: "0 0" });
     };
     const down = (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -1019,8 +1031,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       setAnnMenu(null);
       hideGhost();
       // 图标中心落在点的位置（就是虚线框的位置），整个图标留在页面里
-      const { box, left, top } = where(pageEl, e);
-      const x = (left - box.left) / box.width, y = (top - box.top) / box.height;
+      const { x, y } = where(pageEl, e);
       const name = me?.name || "我";
       setEditPane(P.key);
       setNoteEdit({
@@ -1058,8 +1069,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       const a = icon && mineViewRef.current.find(x => String(x.id) === icon.dataset.annId);
       if (!a) return;
       const pageEl = icon.closest(".page");
-      const r = icon.getBoundingClientRect();
-      drag = { icon, a, box: pageCanvasBox(pageEl), sx: e.clientX, sy: e.clientY, l: r.left, t: r.top, moved: false };
+      // 按页面方向算（转过的页上往哪拖都对，见 rotate.js）：起点的比例坐标 + 图标原来的位置
+      const [u0, v0] = clientToNorm(pageEl, e.clientX, e.clientY);
+      drag = { icon, a, pageEl, px: pageSizePx(pageEl), sx: e.clientX, sy: e.clientY, u0, v0, x0: a.rects[0].x, y0: a.rects[0].y, moved: false };
       e.preventDefault();
     };
     const move = (e) => {
@@ -1067,9 +1079,10 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
       if (!drag.moved && Math.hypot(dx, dy) < 4) return;
       drag.moved = true;
-      const { box } = drag;
-      drag.x = Math.min(Math.max(0, drag.l + dx - box.left), box.width - NOTE_SIZE) / box.width;
-      drag.y = Math.min(Math.max(0, drag.t + dy - box.top), box.height - NOTE_SIZE) / box.height;
+      const { px } = drag;
+      const [u, v] = clientToNorm(drag.pageEl, e.clientX, e.clientY);
+      drag.x = Math.min(Math.max(0, drag.x0 + u - drag.u0), 1 - NOTE_SIZE / px.w);
+      drag.y = Math.min(Math.max(0, drag.y0 + v - drag.v0), 1 - NOTE_SIZE / px.h);
       drag.icon.style.left = `${drag.x * 100}%`;
       drag.icon.style.top = `${drag.y * 100}%`;
     };
@@ -1124,7 +1137,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     const el = P.container;
     let st = null;
     const SVGNS = "http://www.w3.org/2000/svg";
-    const norm = (e) => [(e.clientX - st.box.left) / st.box.width, (e.clientY - st.box.top) / st.box.height];
+    const norm = (e) => clientToNorm(st.pageEl, e.clientX, e.clientY, st.box);      // 页面方向（转过的页也对）
     const redraw = () => st.path.setAttribute("d", inkPathD(st.pts, st.H));
     const down = (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -1134,8 +1147,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       e.preventDefault();
       setAnnMenu(null);
       const box = pageCanvasBox(pageEl);
-      const H = 1000 * box.height / box.width;
-      const lw = penStyleRef.current.width / (box.width / zoomRef.current);     // 占页宽的比例
+      const sz = pageSizePx(pageEl);                       // 页面方向的像素尺寸（旋转时和 box 横竖对调）
+      const H = 1000 * sz.h / sz.w;
+      const lw = penStyleRef.current.width / (sz.w / zoomRef.current);     // 占页宽的比例
       const svg = document.createElementNS(SVGNS, "svg");
       svg.setAttribute("viewBox", `0 0 1000 ${H.toFixed(1)}`);
       svg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:4";
@@ -1147,7 +1161,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       path.setAttribute("stroke-linejoin", "round");
       svg.appendChild(path);
       pageEl.appendChild(svg);
-      st = { pageEl, box, H, lw, svg, path, pid: e.pointerId, pts: [] };
+      st = { pageEl, box, sz, H, lw, svg, path, pid: e.pointerId, pts: [] };
       st.pts.push(norm(e));
       redraw();
       try { el.setPointerCapture(e.pointerId); } catch { /* 老浏览器 */ }
@@ -1156,7 +1170,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       if (!st || e.pointerId !== st.pid) return;
       const p = norm(e), q = st.pts[st.pts.length - 1];
       // 小于半个像素的移动不记，免得一秒几百个点
-      if (Math.hypot((p[0] - q[0]) * st.box.width, (p[1] - q[1]) * st.box.height) < 0.5) return;
+      if (Math.hypot((p[0] - q[0]) * st.sz.w, (p[1] - q[1]) * st.sz.h) < 0.5) return;
       st.pts.push(p);
       redraw();
     };
@@ -1166,10 +1180,10 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       st = null;
       try { el.releasePointerCapture(s0.pid); } catch { /* 已经释放了 */ }
       /* 抽稀按像素算（偏差 0.6px 以内的点去掉），再换回归一化坐标存 */
-      const px = s0.pts.map(([x, y]) => [x * s0.box.width, y * s0.box.height]);
-      const kept = simplify(px, 0.6).map(([x, y]) => [+(x / s0.box.width).toFixed(4), +(y / s0.box.height).toFixed(4)]);
+      const px = s0.pts.map(([x, y]) => [x * s0.sz.w, y * s0.sz.h]);
+      const kept = simplify(px, 0.6).map(([x, y]) => [+(x / s0.sz.w).toFixed(4), +(y / s0.sz.h).toFixed(4)]);
       const xs = kept.map(q => q[0]), ys = kept.map(q => q[1]);
-      const padX = s0.lw / 2, padY = padX * s0.box.width / s0.box.height;
+      const padX = s0.lw / 2, padY = padX * s0.sz.w / s0.sz.h;
       const stroke = {
         x: +(Math.min(...xs) - padX).toFixed(4), y: +(Math.min(...ys) - padY).toFixed(4),
         w: +(Math.max(...xs) - Math.min(...xs) + padX * 2).toFixed(4),
@@ -1211,13 +1225,15 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       const pageEl = document.elementsFromPoint(e.clientX, e.clientY).map(n => n.closest?.(".page")).find(Boolean);
       if (!pageEl) return;
       const n = Number(pageEl.dataset.pageNumber);
-      const box = pageCanvasBox(pageEl);
-      const px = e.clientX - box.left, py = e.clientY - box.top;
+      // 页面方向的像素坐标（转过的页也对，见 rotate.js）
+      const box = pageSizePx(pageEl);
+      const [u, v] = clientToNorm(pageEl, e.clientX, e.clientY);
+      const px = u * box.w, py = v * box.h;
       for (const a of mineRef.current) {
         if (a.kind !== "ink" || a.page !== n || gone.has(a.id) || a.paper_key !== paperKey) continue;
         const hit = (a.rects || []).some(st => {
-          const pts = (st.path || []).map(([x, y]) => [x * box.width, y * box.height]);
-          const tol = R + (st.lw || 0) * box.width / 2;
+          const pts = (st.path || []).map(([x, y]) => [x * box.w, y * box.h]);
+          const tol = R + (st.lw || 0) * box.w / 2;
           if (pts.length === 1) return Math.hypot(px - pts[0][0], py - pts[0][1]) < tol;
           for (let i = 1; i < pts.length; i++) {
             if (distToSeg(px, py, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) < tol) return true;
@@ -1279,13 +1295,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     const quote = areaAnchor(pageEl, rect).quote;
     await updateAnnotation(a.paper_key || paperKey, a.id, { rects: [rect], quote });
     reload(); bump();
-    const box = pageCanvasBox(pageEl);
     const vb = viewerElRef.current?.getBoundingClientRect();
-    if (vb) {
-      const top = box.top + rect.y * box.height;
-      setAnnMenu(m => m && ({ ...m, pos: floatPos({ left: box.left + rect.x * box.width, width: rect.w * box.width, top,
-                                                     bottom: top + rect.h * box.height }, vb, 120) }));
-    }
+    if (vb) setAnnMenu(m => m && ({ ...m, pos: floatPos(normRectToClient(pageEl, rect), vb, 120) }));
   };
   const saveAnchors = async (anchors, extra = {}) => {
     // 一次划选跨了几页会存成几条：算一步，撤销时一起撤
@@ -1463,6 +1474,20 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Ctrl+] / Ctrl+[：顺时针 / 逆时针旋转（同 Edge）
+  const rotateRef = useRef(rotate);
+  rotateRef.current = rotate;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || (e.key !== "]" && e.key !== "[")) return;
+      if (e.target?.closest?.("input, textarea, [contenteditable='true']")) return;
+      e.preventDefault();
+      rotateRef.current(e.key === "]" ? 1 : -1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Ctrl/⌘+F 打开文档内搜索（不然会落到浏览器的页面搜索，搜不到没渲染的页）
   useEffect(() => {
     const onKey = (e) => {
@@ -1587,11 +1612,10 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       const r = citeGroupRect(a, entry.label);
       const pg = a.closest(".page");
       if (!r || !pg) return;
-      const pr = pg.querySelector(".canvasWrapper").getBoundingClientRect();
+      const n = clientRectToNorm(pg, r);               // 挂在页面里、按页面方向放（转过的页也对）
       const el = document.createElement("div");
       el.className = "rh-cite-group";
-      el.style.cssText = `left:${(r.left - pr.left) / pr.width * 100}%;top:${(r.top - pr.top) / pr.height * 100}%;` +
-        `width:${r.width / pr.width * 100}%;height:${r.height / pr.height * 100}%`;
+      el.style.cssText = `left:${n.x * 100}%;top:${n.y * 100}%;width:${n.w * 100}%;height:${n.h * 100}%`;
       pg.appendChild(el);
       a.classList.add("rh-grouped");
       mark = { a, el };
@@ -1612,7 +1636,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       } else {
         // 预览按正文当前的缩放画（字和正在读的一样大）：量链接所在这一页画布的 CSS 宽度 / 点宽
         const pg = a.closest(".page");
-        const k = pg.querySelector(".canvasWrapper").getBoundingClientRect().width / doc.pages[Number(pg.dataset.pageNumber) - 1].size.width;
+        const k = pg.querySelector(".canvasWrapper").offsetWidth / doc.pages[Number(pg.dataset.pageNumber) - 1].size.width;
         setLinkPv({ kind: "page", rect, dest, k });
       }
     };
@@ -1894,6 +1918,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           <span className="pr-0.5">%</span>
         </div>
         <ZoomMenu zoom={vZoom} mode={vMode} onPick={setScale} />
+        <TBtn onClick={() => rotate(1)} title={`顺时针旋转（Ctrl+]）${rotation ? `（现在 ${rotation}°）` : ""}`} disabled={!doc}><Icon d={IconRotate} /></TBtn>
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
         <TBtn onClick={() => runHistory("undo")} title="撤销（Ctrl+Z）" disabled={!hist.canUndo}><Icon d={IconUndo} /></TBtn>
         <TBtn onClick={() => runHistory("redo")} title="恢复（Ctrl+Y）" disabled={!hist.canRedo}><Icon d={IconRedo} /></TBtn>
@@ -2252,13 +2277,13 @@ function TransMark({ anchors, viewerEl }) {
     const pageEl = viewerEl.querySelector(`.page[data-page-number="${a.page}"]`);
     if (!pageEl || !a.rects) return [];
     const box = pageCanvasBox(pageEl);
-    return a.rects.map((r, j) => (
-      <div key={`${i}-${j}`} style={{
+    return a.rects.map((r, j) => {
+      const c = normRectToClient(pageEl, r, box);         // 转过的页也对（rotate.js）
+      return <div key={`${i}-${j}`} style={{
         position: "absolute", pointerEvents: "none", borderRadius: 2, background: "rgba(56,132,255,0.28)",
-        left: box.left - vb.left + r.x * box.width, top: box.top - vb.top + r.y * box.height,
-        width: r.w * box.width, height: r.h * box.height,
-      }} />
-    ));
+        left: c.left - vb.left, top: c.top - vb.top, width: c.width, height: c.height,
+      }} />;
+    });
   });
 }
 
@@ -2344,12 +2369,13 @@ function SplitPane({ doc, main, apiRef, containerRef, viewerElRef, onOverlay, on
     eventBus.on("scalechanging", report);
     viewer.setDocument(doc);
     const m = main.current?.viewer;
+    if (m?.rotation) viewer.setRotation(m.rotation);          // 和主阅读区转一样的角度
     viewer.currentScaleValue = m?.currentScaleValue || "page-width";
     // 位置：主阅读区顶上那一页、往下滚了这一页的几成
     const at = m?._anchor();
     if (at) {
       const v = viewer.views[at.index];
-      containerRef.current.scrollTop = v.div.offsetTop + at.frac * v.div.offsetHeight;
+      containerRef.current.scrollTop = v.slot.offsetTop + at.frac * v.slot.offsetHeight;
       containerRef.current.scrollLeft = m.container.scrollLeft;
       viewer.update();
     }

@@ -13,6 +13,7 @@
  * 选择本身还是浏览器原生的：拖选、双击选词、三击、Shift 扩选、Ctrl+C、右键都现成，
  * 上面读 window.getSelection() 的功能（划选工具条、高亮、翻译）原样能用。
  */
+import { clientToNorm, clientRectToNorm, pageSizePx } from "./rotate";
 
 /* 字体用系统的 Arial / sans-serif，**不用** index.css 里那个改了上下伸的 rh-tight：实测 rh-tight（local() 字体 +
    metric override）让一页九百个词的排版从 39ms 变成 174ms，滚动时一卡就是几百毫秒。
@@ -164,12 +165,18 @@ export function buildTextLayer(data, size) {
 export function installSelectionHelper(container) {
   let drag = null;               // { layer, timer, lastX, lastY }
 
-  /** 一个文字层里离 (x, y) 最近的字符位置：[文本节点, 偏移] */
-  const posIn = (layer, x, y) => {
+  /** 一个文字层里离 (x, y) 最近的字符位置：[文本节点, 偏移]。
+      都换成页面方向的像素再比（转过的页上「同一行」在屏幕上是竖着的，见 rotate.js） */
+  const posIn = (layer, cx, cy) => {
+    const page = layer.closest(".page");
+    const sz = pageSizePx(page), box = page.querySelector(".canvasWrapper").getBoundingClientRect();
+    const loc = (r) => { const n = clientRectToNorm(page, r, box); return { left: n.x * sz.w, top: n.y * sz.h, right: (n.x + n.w) * sz.w, bottom: (n.y + n.h) * sz.h, width: n.w * sz.w, height: n.h * sz.h }; };
+    const [u, v] = clientToNorm(page, cx, cy, box);
+    const x = u * sz.w, y = v * sz.h;
     let best = null, bd = Infinity;
     for (const s of layer.children) {
       if (s.tagName !== "SPAN" || !s.firstChild) continue;
-      const r = s.getBoundingClientRect();
+      const r = loc(s.getBoundingClientRect());
       if (!r.width && !r.height) continue;
       const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
       const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
@@ -185,7 +192,7 @@ export function installSelectionHelper(container) {
     const rg = document.createRange();
     for (let k = 0; k < t.length; k++) {
       rg.setStart(t, k); rg.setEnd(t, k + 1);
-      const cr = rg.getBoundingClientRect();
+      const cr = loc(rg.getBoundingClientRect());
       if (x < cr.left + cr.width / 2) return [t, k];
     }
     return [t, t.length];

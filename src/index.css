@@ -19,6 +19,9 @@ body { font-family: theme("fontFamily.sans"); }
   position: relative; margin: 1px auto -8px; border: 9px solid transparent;
   background-clip: content-box; background-color: #fff; overflow: visible;
 }
+/* 每页外面的占位槽（旋转时是转过之后的大小）：页面间距、居中都放在槽上；页面绝对定位在槽里，用 transform 转（viewer.js） */
+.pdfViewer .pageSlot { position: relative; margin: 1px auto -8px; }
+.pdfViewer .pageSlot > .page { position: absolute; left: 0; top: 0; margin: 0; transform-origin: 0 0; }
 .pdfViewer .canvasWrapper { position: absolute; inset: 0; overflow: hidden; }
 .pdfViewer .canvasWrapper canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
 .pdfViewer .annotationLayer { position: absolute; inset: 0; pointer-events: none; z-index: 2; }

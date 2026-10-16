@@ -13,6 +13,7 @@
  */
 
 import { tokenize } from "./pdfium/textLayer";
+import { clientRectToNorm } from "./pdfium/rotate";
 
 const S2 = "https://api.semanticscholar.org/graph/v1/paper";
 const S2_FIELDS = "title,authors,year,venue,abstract,citationCount,externalIds,openAccessPdf,url,journal";
@@ -184,16 +185,21 @@ function parseGroup(s) {
  * 做法：把链接那一行的文字层拼起来，找出所有 `[...]`，挑包含这个编号的那一组。
  * 找不到（作者-年份制、或者方括号被拆到两行）就只有它自己。
  */
+/** 链接所在那一行的文字层 span（按页面方向找同一行、从左到右排；转过的页也对，见 pdfium/rotate.js） */
+function lineSpans(page, linkEl, leafOnly) {
+  const lr = clientRectToNorm(page, linkEl.getBoundingClientRect());
+  const cy = lr.y + lr.h / 2;
+  return [...page.querySelectorAll(".textLayer span")]
+    .filter(sp => !sp.children.length && (!leafOnly || sp.firstChild))
+    .map(sp => ({ sp, r: clientRectToNorm(page, sp.getBoundingClientRect()) }))
+    .filter(({ r }) => r.w + r.h > 0 && r.y <= cy && r.y + r.h >= cy)
+    .sort((a, b) => a.r.x - b.r.x);
+}
+
 export function citeGroup(linkEl, label) {
   const page = linkEl.closest(".page");
-  const lr = linkEl.getBoundingClientRect();
   if (!page) return [label];
-  const cy = lr.top + lr.height / 2;
-  const spans = [...page.querySelectorAll(".textLayer span")]
-    .filter(sp => !sp.children.length)
-    .map(sp => ({ sp, r: sp.getBoundingClientRect() }))
-    .filter(({ r }) => r.top <= cy && r.bottom >= cy)
-    .sort((a, b) => a.r.left - b.r.left);
+  const spans = lineSpans(page, linkEl, false);
   const line = spans.map(s => s.sp.textContent).join("");
   for (const m of line.matchAll(/\[([^\][]{1,80})\]/g)) {
     const nums = parseGroup(m[1]);
@@ -211,12 +217,7 @@ export function citeGroupRect(linkEl, label) {
   const page = linkEl.closest(".page");
   if (!page) return null;
   const lr = linkEl.getBoundingClientRect();
-  const cy = lr.top + lr.height / 2;
-  const spans = [...page.querySelectorAll(".textLayer span")]
-    .filter(sp => !sp.children.length && sp.firstChild)
-    .map(sp => ({ sp, r: sp.getBoundingClientRect() }))
-    .filter(({ r }) => r.top <= cy && r.bottom >= cy)
-    .sort((a, b) => a.r.left - b.r.left);
+  const spans = lineSpans(page, linkEl, true);
   let line = "";
   const at = [];               // 每个 span 在这一行字符串里的起点
   for (const { sp } of spans) { at.push(line.length); line += sp.textContent; }
@@ -233,7 +234,8 @@ export function citeGroupRect(linkEl, label) {
     rg.setEnd(...locate(m.index + m[0].length - 1));
     rg.setEnd(rg.endContainer, Math.min(rg.endOffset + 1, rg.endContainer.length));
     const r = rg.getBoundingClientRect();
-    if (r.width && r.left <= lr.right && r.right >= lr.left) return r;
+    // 外框和链接有重叠（屏幕坐标，转不转都一样）
+    if (r.width && r.left <= lr.right && r.right >= lr.left && r.top <= lr.bottom && r.bottom >= lr.top) return r;
   }
   return null;
 }

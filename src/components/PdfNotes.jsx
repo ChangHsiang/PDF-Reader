@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Avatar, UserLink, MathText } from "./bits";
 import { normTags } from "../lib/notes";
-import { pageCanvasBox } from "../lib/pdfAnchor";
+import { clientToNorm, normRectToClient, pageSizePx, localPlacement } from "../lib/pdfium/rotate";
 import { useKeepInView } from "../lib/useKeepInView";
 
 /**
@@ -331,7 +331,7 @@ export function useHighlightLayer(viewerElRef, apiRef, ready, annotations, { act
           kids.push(d);
         });
       });
-      if (inks.length) kids.push(inkSvg(inks, pageCanvasBox(pageEl), activeId));
+      if (inks.length) { const sz = pageSizePx(pageEl); kids.push(inkSvg(inks, { width: sz.w, height: sz.h }, activeId)); }
       layer.replaceChildren(...kids);
     };
 
@@ -1259,20 +1259,21 @@ export function AreaEditBox({ a, viewerEl, onCommit }) {
 
   const pageEl = viewerEl?.querySelector(`.page[data-page-number="${a.page}"]`);
   if (!pageEl) return null;
-  const box = pageCanvasBox(pageEl);
+  /* 按页面方向算（转过的页上，整个编辑框跟着页面转，见 rotate.js 的 localPlacement） */
   const vb = viewerEl.getBoundingClientRect();
-  const W = box.width, H = box.height;
+  const { w: W, h: H } = pageSizePx(pageEl);
 
   const start = (mode) => (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const el = e.currentTarget;
-    const sx = e.clientX, sy = e.clientY, r0 = rRef.current;
+    const [su, sv] = clientToNorm(pageEl, e.clientX, e.clientY), r0 = rRef.current;
     const minW = 12 / W, minH = 12 / H;
     const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     const move = (ev) => {
-      const dx = (ev.clientX - sx) / W, dy = (ev.clientY - sy) / H;
+      const [u, v] = clientToNorm(pageEl, ev.clientX, ev.clientY);
+      const dx = u - su, dy = v - sv;
       if (mode === "move") {
         setR({ ...r0, x: clamp(r0.x + dx, 0, 1 - r0.w), y: clamp(r0.y + dy, 0, 1 - r0.h) });
         return;
@@ -1310,7 +1311,7 @@ export function AreaEditBox({ a, viewerEl, onCommit }) {
     <div className="rh-selbar" onMouseDown={e => e.stopPropagation()} onMouseUp={e => e.stopPropagation()}
       style={{
         position: "absolute", zIndex: 35, boxSizing: "border-box", borderRadius: 2,
-        left: box.left - vb.left + r.x * W, top: box.top - vb.top + r.y * H, width: r.w * W, height: r.h * H,
+        ...localPlacement(pageEl, r.x, r.y, vb), width: r.w * W, height: r.h * H,
         border: `${bw}px ${a.style?.dash || "solid"} ${col}`,
         background: a.style?.fill ? rgba(a.color, 0.3) : rgba(a.color, 0.06),
       }}>
@@ -1393,7 +1394,7 @@ export function TextBoxEditor({ draft, viewerEl, onChange, onDone, onDelete }) {
     ta.style.height = `${ta.scrollHeight}px`;
     /* 顺手把高度记进 rect.h（存库后当外接框用：列表排序、跳转定位）。差得不多就不更新，免得来回重渲染 */
     const pg = viewerEl?.querySelector(`.page[data-page-number="${draft.page}"]`);
-    const ph = pg ? pageCanvasBox(pg).height : 0;
+    const ph = pg ? pageSizePx(pg).h : 0;
     if (ph) {
       const h = ta.offsetHeight / ph;
       if (Math.abs(h - (draft.rect.h || 0)) > 0.002) onChange({ rect: { ...draft.rect, h } });
@@ -1410,9 +1411,9 @@ export function TextBoxEditor({ draft, viewerEl, onChange, onDone, onDelete }) {
   }, [onDone]);
 
   if (!pageEl) return null;
-  const box = pageCanvasBox(pageEl);
+  /* 按页面方向算：转过的页上，编辑框（连同工具条）跟着页面转，打的字和存好后画出来的方向一致（同 Edge） */
   const vb = viewerEl.getBoundingClientRect();
-  const W = box.width, H = box.height;
+  const { w: W, h: H } = pageSizePx(pageEl);
   const k = parseFloat(viewerEl.style.getPropertyValue("--scale-factor")) || 1.333;   // = 缩放 × 96/72
   const r = draft.rect, st = draft.style;
 
@@ -1422,10 +1423,11 @@ export function TextBoxEditor({ draft, viewerEl, onChange, onDone, onDelete }) {
     e.preventDefault();
     e.stopPropagation();
     const el = e.currentTarget;
-    const sx = e.clientX, sy = e.clientY, r0 = { ...r };
+    const [su, sv] = clientToNorm(pageEl, e.clientX, e.clientY), r0 = { ...r };
     const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     const move = (ev) => {
-      const dx = (ev.clientX - sx) / W, dy = (ev.clientY - sy) / H;
+      const [u, v] = clientToNorm(pageEl, ev.clientX, ev.clientY);
+      const dx = u - su, dy = v - sv;
       if (mode === "move") onChange({ rect: { ...r0, x: clamp(r0.x + dx, 0, 1 - r0.w), y: clamp(r0.y + dy, 0, 0.98) } });
       else onChange({ rect: { ...r0, w: clamp(r0.w + dx, 40 / W, 1 - r0.x) } });
     };
@@ -1446,7 +1448,7 @@ export function TextBoxEditor({ draft, viewerEl, onChange, onDone, onDelete }) {
 
   return (
     <div ref={boxRef} className="rh-selbar" onMouseDown={e => e.stopPropagation()} onMouseUp={e => e.stopPropagation()}
-      style={{ position: "absolute", zIndex: 46, left: box.left - vb.left + r.x * W, top: box.top - vb.top + r.y * H, width: r.w * W }}>
+      style={{ position: "absolute", zIndex: 46, ...localPlacement(pageEl, r.x, r.y, vb), width: r.w * W }}>
       {/* 工具条，贴在框的上方 */}
       {/* z-index 别省：颜色面板从这条下面展开，没有它会被后面的文本框盖住（踩过） */}
       <div style={{ zIndex: 2 }}
@@ -1546,10 +1548,11 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
   }, [onDone]);
 
   if (!pageEl) return null;
-  const box = pageCanvasBox(pageEl);
   const vb = viewerEl.getBoundingClientRect();
-  const iconL = box.left - vb.left + draft.rect.x * box.width;
-  const iconT = box.top - vb.top + draft.rect.y * box.height;
+  /* 图标在屏幕上的外框（转过的页上图标跟着页面转，见 rotate.js）；卡片照旧正着放在它旁边 */
+  const sz = pageSizePx(pageEl);
+  const ib0 = normRectToClient(pageEl, { x: draft.rect.x, y: draft.rect.y, w: NOTE_SIZE / sz.w, h: NOTE_SIZE / sz.h });
+  const iconL = ib0.left - vb.left, iconT = ib0.top - vb.top;
   const CARD_W = 280;
   // 右边放不下（贴着页面右边的附注）就放到图标左边
   const right = iconL + NOTE_SIZE + 8 + CARD_W <= vb.width - 8;
@@ -1566,7 +1569,7 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
   return (
     <>
       {!draft.id && (
-        <div style={{ position: "absolute", left: iconL, top: iconT, width: NOTE_SIZE, height: NOTE_SIZE, zIndex: 45,
+        <div style={{ position: "absolute", ...localPlacement(pageEl, draft.rect.x, draft.rect.y, vb), width: NOTE_SIZE, height: NOTE_SIZE, zIndex: 45,
                       borderRadius: 5, background: rgba(draft.color, 1), color: noteInk(draft.color),
                       display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 1px 3px rgba(0,0,0,.35)" }}
           dangerouslySetInnerHTML={{ __html: NOTE_SVG }} />
