@@ -20,6 +20,8 @@ function Popup() {
   const [intercept, setIntercept] = useState(true);
   const [sync, setSync] = useState({ busy: false, msg: "" });
   const [loginOpen, setLoginOpen] = useState(false);
+  const [signOutArmed, setSignOutArmed] = useState(false);
+  useEffect(() => { if (!signOutArmed) return; const t = setTimeout(() => setSignOutArmed(false), 3000); return () => clearTimeout(t); }, [signOutArmed]);
   // 插件能不能读本地文件（扩展管理页的「允许访问文件网址」）：不能的话提示一句怎么开
   const [fileAccess, setFileAccess] = useState(true);
   useEffect(() => { chrome.extension?.isAllowedFileSchemeAccess?.(setFileAccess); }, []);
@@ -60,9 +62,11 @@ function Popup() {
               </a>
               <div className="text-[11px] text-[#9a9a9a] truncate">{session.email}</div>
             </div>
-            <button onClick={() => signOut()}
-              className="h-7 px-2.5 rounded-full text-[11.5px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">
-              退出
+            {/* 退出要点两下（同删除）：第一下变红「再点一下」，3 秒内再点才退 */}
+            <button onClick={() => { if (!signOutArmed) { setSignOutArmed(true); return; } signOut(); }}
+              className={`h-7 px-2.5 rounded-full text-[11.5px] bg-transparent border cursor-pointer whitespace-nowrap
+                ${signOutArmed ? "text-[#ff8a80] border-[#ff8a8066] bg-[#ff8a801a]" : "text-[#c8c8c8] border-[#ffffff33] hover:bg-[#ffffff1a]"}`}>
+              {signOutArmed ? "再点一下退出" : "退出"}
             </button>
           </>
         ) : loginOpen ? (

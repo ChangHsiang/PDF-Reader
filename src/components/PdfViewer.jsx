@@ -2721,6 +2721,10 @@ function DownloadMenu({ disabled, onPlain, onAnnotated }) {
 /** 头像（已登录）：点开是账号菜单 —— 名字 / 邮箱、文献收藏（弹窗，见 LibraryDialog）、退出登录 */
 function AccountMenu({ me, email, onLibrary }) {
   const [pos, setPos] = useState(null);
+  /* 退出要点两下（同删除）：第一下变红「再点一下退出」，3 秒内再点才退；菜单收起就复位 */
+  const [armed, setArmed] = useState(false);
+  useEffect(() => { if (!armed) return; const t = setTimeout(() => setArmed(false), 3000); return () => clearTimeout(t); }, [armed]);
+  useEffect(() => { if (!pos) setArmed(false); }, [pos]);
   const btnRef = useRef(null);
   const panelRef = useRef(null);
   useEffect(() => {
@@ -2758,9 +2762,10 @@ function AccountMenu({ me, email, onLibrary }) {
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z" /></svg>
             文献收藏
           </button>
-          <button className={item} onClick={() => { setPos(null); chrome.runtime.sendMessage({ type: "auth:signOut" }); }}>
+          <button className={`${item} ${armed ? "!text-[#ff8a80] !bg-[#ff8a801a]" : ""}`}
+            onClick={() => { if (!armed) { setArmed(true); return; } setPos(null); chrome.runtime.sendMessage({ type: "auth:signOut" }); }}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-            退出登录
+            {armed ? "再点一下退出" : "退出登录"}
           </button>
         </div>
       )}
