@@ -75,6 +75,7 @@ export class PdfiumViewer {
     this._scaleValue = "page-actual";
     this._page = 1;
     this._rot = 0;                       // 显示旋转：0 / 90 / 180 / 270（顺时针）
+    this._pageRot = {};                  // 单独转的页：{ 页下标: 角度 }，叠在整体角度上
     this._raf = 0;
     this._detailTimer = 0;
     this._busy = false;                  // Worker 一次只排一个渲染，近的先画
@@ -101,6 +102,16 @@ export class PdfiumViewer {
     this._applyScale(preset ? this._resolve(preset) : this._scale, preset);
     this.eventBus.dispatch("rotationchanging", { source: this, rotation: this._rot });
   }
+  get pageRotations() { return { ...this._pageRot }; }
+  /** 单独转某几页（{ 页下标: 角度 }，整张表替换）：叠在整体角度上。只重排，不重画 */
+  setPageRotations(map) {
+    this._pageRot = { ...map };
+    const preset = /^(page-|auto)/.test(this._scaleValue) ? this._scaleValue : null;
+    this._applyScale(preset ? this._resolve(preset) : this._scale, preset);
+    this.eventBus.dispatch("rotationchanging", { source: this, rotation: this._rot });
+  }
+  /** 这一页最终转了多少度 */
+  rotOf(index) { return (this._rot + (this._pageRot[index] || 0)) % 360; }
   set currentPageNumber(n) { this.scrollToPage(n); }
   getPageView(i) { return this.views[i]; }
 
@@ -133,7 +144,7 @@ export class PdfiumViewer {
   _resolve(v) {
     const first = this.doc?.pages[this._page - 1] || this.doc?.pages[0];
     if (!first) return 1;
-    const side = this._rot % 180 ? ["height", "width"] : ["width", "height"];
+    const side = this.rotOf(first.index ?? this._page - 1) % 180 ? ["height", "width"] : ["width", "height"];
     const pw = first.size[side[0]] * PT2PX, ph = first.size[side[1]] * PT2PX;
     const cw = this.container.clientWidth - 40, chh = this.container.clientHeight - 20;   // 留出页边和滚动条
     switch (v) {
@@ -164,8 +175,9 @@ export class PdfiumViewer {
     const anchor = this._anchor();
     this._scale = scale;
     this.viewer.style.setProperty("--scale-factor", String(scale * PT2PX));
-    const rot = this._rot, B = 18;           // B：.page 两边 9px 透明边框
+    const B = 18;                            // B：.page 两边 9px 透明边框
     for (const v of this.views) {
+      const rot = this.rotOf(v.index);
       const w = v.size.width * PT2PX * scale, h = v.size.height * PT2PX * scale;
       v.div.style.width = `${w}px`;
       v.div.style.height = `${h}px`;
@@ -197,7 +209,7 @@ export class PdfiumViewer {
     const v = this.views[n - 1];
     if (!v) return;
     // 页内位置只在不旋转时有意义（转过之后「往下多少点」不再是屏幕上的往下）
-    const y = top == null || this._rot ? 0 : top * PT2PX * this._scale;
+    const y = top == null || this.rotOf(n - 1) ? 0 : top * PT2PX * this._scale;
     this.container.scrollTop = v.slot.offsetTop + y - 6;
     this.update();
   }

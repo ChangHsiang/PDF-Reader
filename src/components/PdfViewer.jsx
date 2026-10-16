@@ -482,6 +482,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           // 上次看到哪儿就回到哪儿（缩放方式也一样）；第一次打开默认 100%（纸面原尺寸），不按宽度撑满
           const saved = loadPos(paperKey);
           if (rotationRef.current) viewer.setRotation(rotationRef.current);    // 换了文档（重新加载）：角度照旧
+          if (Object.keys(pageRotRef.current).length) viewer.setPageRotations(pageRotRef.current);
           viewer.currentScaleValue = saved?.scale || "page-actual";
           const v = saved?.page && viewer.views[saved.page - 1];
           if (v) { viewer.container.scrollTop = v.slot.offsetTop + (saved.frac || 0) * v.slot.offsetHeight; viewer.update(); }
@@ -592,6 +593,30 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     rotationRef.current = r;              // 连点几下：每下都在上一下的基础上转
     setRotation(r);
     [apiRef.current?.viewer, splitApiRef.current?.viewer].filter(Boolean).forEach(v => v.setRotation(r));
+    refitBoth();
+  };
+  /* 只转一页（旋转按钮旁的下拉）：叠在整体角度上，{ 页下标: 角度 }；转的是当前这一栏正在看的那一页 */
+  const [pageRot, setPageRot] = useState({});
+  const pageRotRef = useRef({});
+  const applyPageRot = (m) => {
+    pageRotRef.current = m;
+    setPageRot(m);
+    [apiRef.current?.viewer, splitApiRef.current?.viewer].filter(Boolean).forEach(v => v.setPageRotations(m));
+    refitBoth();
+  };
+  const rotatePage = (dir) => {
+    const i = vPage - 1, m = { ...pageRotRef.current };
+    const r = ((m[i] || 0) + (dir > 0 ? 90 : 270)) % 360;
+    if (r) m[i] = r; else delete m[i];
+    applyPageRot(m);
+  };
+  const resetPageRot = () => { const m = { ...pageRotRef.current }; delete m[vPage - 1]; applyPageRot(m); };
+  const resetAllRot = () => {
+    rotationRef.current = 0;
+    setRotation(0);
+    pageRotRef.current = {};
+    setPageRot({});
+    [apiRef.current?.viewer, splitApiRef.current?.viewer].filter(Boolean).forEach(v => { v.setPageRotations({}); v.setRotation(0); });
     refitBoth();
   };
   const stepZoom = (dir) => {
@@ -1919,6 +1944,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         </div>
         <ZoomMenu zoom={vZoom} mode={vMode} onPick={setScale} />
         <TBtn onClick={() => rotate(1)} title={`顺时针旋转（Ctrl+]）${rotation ? `（现在 ${rotation}°）` : ""}`} disabled={!doc}><Icon d={IconRotate} /></TBtn>
+        <RotateMenu disabled={!doc} page={vPage} all={rotation} one={pageRot[vPage - 1] || 0} anyPage={Object.keys(pageRot).length > 0}
+          onAll={rotate} onPage={rotatePage} onResetPage={resetPageRot} onResetAll={resetAllRot} />
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
         <TBtn onClick={() => runHistory("undo")} title="撤销（Ctrl+Z）" disabled={!hist.canUndo}><Icon d={IconUndo} /></TBtn>
         <TBtn onClick={() => runHistory("redo")} title="恢复（Ctrl+Y）" disabled={!hist.canRedo}><Icon d={IconRedo} /></TBtn>
@@ -2369,7 +2396,8 @@ function SplitPane({ doc, main, apiRef, containerRef, viewerElRef, onOverlay, on
     eventBus.on("scalechanging", report);
     viewer.setDocument(doc);
     const m = main.current?.viewer;
-    if (m?.rotation) viewer.setRotation(m.rotation);          // 和主阅读区转一样的角度
+    if (m?.rotation) viewer.setRotation(m.rotation);          // 和主阅读区转一样的角度（单独转的页也一样）
+    if (m && Object.keys(m.pageRotations).length) viewer.setPageRotations(m.pageRotations);
     viewer.currentScaleValue = m?.currentScaleValue || "page-width";
     // 位置：主阅读区顶上那一页、往下滚了这一页的几成
     const at = m?._anchor();
@@ -2530,6 +2558,64 @@ function SplitMenu({ mode, disabled, onPick }) {
               <Icon d={icon} size={15} />
               {label}
             </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 旋转按钮旁的下拉：整份转 / 只转这一页 / 转回原样（样式同分屏下拉） */
+function RotateMenu({ disabled, page, all, one, anyPage, onAll, onPage, onResetPage, onResetAll }) {
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+  useEffect(() => {
+    if (!pos) return;
+    const close = (e) => {
+      if (panelRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
+      setPos(null);
+    };
+    const onKey = (e) => { if (e.key === "Escape") setPos(null); };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", onKey); };
+  }, [pos]);
+  const toggle = () => {
+    if (pos) { setPos(null); return; }
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 90, window.innerWidth - 230)) });
+  };
+  const ccw = <><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" /><polyline points="3.5 3.5 3.5 8.5 8.5 8.5" /></>;
+  const groups = [
+    [[() => onAll(1), "所有页顺时针旋转", IconRotate, "Ctrl+]"], [() => onAll(-1), "所有页逆时针旋转", ccw, "Ctrl+["]],
+    [[() => onPage(1), `只转第 ${page} 页（顺时针）`, IconRotate], [() => onPage(-1), `只转第 ${page} 页（逆时针）`, ccw]],
+    [[onResetPage, `第 ${page} 页转回来`, null, one ? `${one}°` : "", !one], [onResetAll, "全部转回原样", null, "", !all && !anyPage]],
+  ];
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} disabled={disabled} title="旋转方式"
+        className={`h-7 w-4 -ml-1 rounded-md flex items-center justify-center border-none shrink-0
+          ${disabled ? "text-[#ffffff4d] bg-transparent cursor-not-allowed"
+            : pos ? "text-[#fff] bg-[#ffffff33] cursor-pointer" : "text-[#c8c8c8] bg-transparent hover:bg-[#ffffff26] cursor-pointer"}`}>
+        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3"
+          strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {pos && (
+        <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
+          className="min-w-[210px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          {groups.map((g, gi) => (
+            <div key={gi} className={gi ? "mt-1 pt-1 border-t border-[#ffffff1f]" : ""}>
+              {g.map(([fn, label, icon, hint, off]) => (
+                <button key={label} disabled={off} onClick={() => { fn(); setPos(null); }}
+                  className="w-full h-8 flex items-center gap-2 pl-2 pr-3 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
+                             border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent">
+                  <span className="w-[15px] flex justify-center">{icon && <Icon d={icon} size={15} />}</span>
+                  <span className="flex-1">{label}</span>
+                  {hint && <span className="text-[11px] text-[#9a9a9a]">{hint}</span>}
+                </button>
+              ))}
+            </div>
           ))}
         </div>
       )}
