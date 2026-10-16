@@ -2615,7 +2615,7 @@ function RotateMenu({ disabled, mode, onMode, rotated, onReset }) {
             <div key={gi} className={gi ? "mt-1 pt-1 border-t border-[#ffffff1f]" : ""}>
               {g.map(([fn, label, icon, hint, off, on]) => (
                 <button key={label} disabled={off} onClick={() => { fn(); setPos(null); }}
-                  className="w-full h-8 flex items-center gap-2 pl-2 pr-3 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
+                  className="w-full h-8 flex items-center gap-2 pl-2 pr-6 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
                              border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent">
                   <span className="w-4 text-[#7ec8e3] text-[12px] text-center">{on ? "✓" : ""}</span>
                   <span className="w-[15px] flex justify-center">{icon && <Icon d={icon} size={15} />}</span>
