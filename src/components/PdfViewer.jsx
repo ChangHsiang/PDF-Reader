@@ -92,6 +92,9 @@ const IconNote = <><path d="M20 15.5a1.5 1.5 0 0 1-1.5 1.5H8.5L4 20.5V5.5A1.5 1.
 const IconSplit = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="12" y1="4" x2="12" y2="20" /></>;
 const IconSplitV = <><rect x="3" y="4" width="18" height="16" rx="2" /><line x1="3" y1="12" x2="21" y2="12" /></>;
 const IconRotate = <><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1" /><polyline points="20.5 3.5 20.5 8.5 15.5 8.5" /></>;
+/* 单页模式的旋转按钮：箭头中间一个「1」 */
+const IconRotateOne = <><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1" /><polyline points="20.5 3.5 20.5 8.5 15.5 8.5" />
+  <text x="12" y="16" textAnchor="middle" fontSize="11" fontWeight="700" fontFamily="system-ui, sans-serif" fill="currentColor" stroke="none">1</text></>;
 const IconUndo = <><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></>;
 const IconRedo = <><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" /></>;
 const IconChat = <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />;
@@ -610,6 +613,10 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     if (r) m[i] = r; else delete m[i];
     applyPageRot(m);
   };
+  /* 旋转按钮转「所有页」还是「当前这一页」（下拉里选，记在本机）；Ctrl+] / Ctrl+[ 也跟着它 */
+  const [rotMode, setRotModeRaw] = useState(() => localStorage.getItem("rh_rot_mode") === "page" ? "page" : "all");
+  const setRotMode = (m) => { setRotModeRaw(m); localStorage.setItem("rh_rot_mode", m); };
+  const rotateBtn = (dir) => (rotMode === "page" ? rotatePage(dir) : rotate(dir));
   const resetPageRot = () => { const m = { ...pageRotRef.current }; delete m[vPage - 1]; applyPageRot(m); };
   const resetAllRot = () => {
     rotationRef.current = 0;
@@ -1500,14 +1507,14 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   }, []);
 
   // Ctrl+] / Ctrl+[：顺时针 / 逆时针旋转（同 Edge）
-  const rotateRef = useRef(rotate);
-  rotateRef.current = rotate;
+  const rotateRef = useRef(rotateBtn);
+  rotateRef.current = rotateBtn;
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey || (e.key !== "]" && e.key !== "[")) return;
       if (e.target?.closest?.("input, textarea, [contenteditable='true']")) return;
       e.preventDefault();
-      rotateRef.current(e.key === "]" ? 1 : -1);
+      rotateRef.current(e.key === "]" ? 1 : -1);      // 按当前模式：所有页 / 当前页
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1943,9 +1950,11 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           <span className="pr-0.5">%</span>
         </div>
         <ZoomMenu zoom={vZoom} mode={vMode} onPick={setScale} />
-        <TBtn onClick={() => rotate(1)} title={`顺时针旋转（Ctrl+]）${rotation ? `（现在 ${rotation}°）` : ""}`} disabled={!doc}><Icon d={IconRotate} /></TBtn>
-        <RotateMenu disabled={!doc} page={vPage} all={rotation} one={pageRot[vPage - 1] || 0} anyPage={Object.keys(pageRot).length > 0}
-          onAll={rotate} onPage={rotatePage} onResetPage={resetPageRot} onResetAll={resetAllRot} />
+        <TBtn onClick={() => rotateBtn(1)} disabled={!doc}
+          title={rotMode === "page" ? `顺时针旋转第 ${vPage} 页（Ctrl+]）` : `顺时针旋转所有页（Ctrl+]）`}>
+          <Icon d={rotMode === "page" ? IconRotateOne : IconRotate} /></TBtn>
+        <RotateMenu disabled={!doc} page={vPage} mode={rotMode} onMode={setRotMode} all={rotation} one={pageRot[vPage - 1] || 0}
+          anyPage={Object.keys(pageRot).length > 0} onResetPage={resetPageRot} onResetAll={resetAllRot} />
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
         <TBtn onClick={() => runHistory("undo")} title="撤销（Ctrl+Z）" disabled={!hist.canUndo}><Icon d={IconUndo} /></TBtn>
         <TBtn onClick={() => runHistory("redo")} title="恢复（Ctrl+Y）" disabled={!hist.canRedo}><Icon d={IconRedo} /></TBtn>
@@ -2565,8 +2574,8 @@ function SplitMenu({ mode, disabled, onPick }) {
   );
 }
 
-/** 旋转按钮旁的下拉：整份转 / 只转这一页 / 转回原样（样式同分屏下拉） */
-function RotateMenu({ disabled, page, all, one, anyPage, onAll, onPage, onResetPage, onResetAll }) {
+/** 旋转按钮旁的下拉：按钮转「所有页」还是「当前页」（选中的打勾，按钮图标跟着变）+ 转回原样（样式同分屏下拉） */
+function RotateMenu({ disabled, page, mode, onMode, all, one, anyPage, onResetPage, onResetAll }) {
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const panelRef = useRef(null);
@@ -2586,10 +2595,9 @@ function RotateMenu({ disabled, page, all, one, anyPage, onAll, onPage, onResetP
     const r = btnRef.current.getBoundingClientRect();
     setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 90, window.innerWidth - 230)) });
   };
-  const ccw = <><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" /><polyline points="3.5 3.5 3.5 8.5 8.5 8.5" /></>;
   const groups = [
-    [[() => onAll(1), "所有页顺时针旋转", IconRotate, "Ctrl+]"], [() => onAll(-1), "所有页逆时针旋转", ccw, "Ctrl+["]],
-    [[() => onPage(1), `只转第 ${page} 页（顺时针）`, IconRotate], [() => onPage(-1), `只转第 ${page} 页（逆时针）`, ccw]],
+    [[() => onMode("all"), "旋转所有页", IconRotate, "", false, mode === "all"],
+     [() => onMode("page"), "只旋转当前页", IconRotateOne, "", false, mode === "page"]],
     [[onResetPage, `第 ${page} 页转回来`, null, one ? `${one}°` : "", !one], [onResetAll, "全部转回原样", null, "", !all && !anyPage]],
   ];
   return (
@@ -2606,10 +2614,11 @@ function RotateMenu({ disabled, page, all, one, anyPage, onAll, onPage, onResetP
           className="min-w-[210px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
           {groups.map((g, gi) => (
             <div key={gi} className={gi ? "mt-1 pt-1 border-t border-[#ffffff1f]" : ""}>
-              {g.map(([fn, label, icon, hint, off]) => (
+              {g.map(([fn, label, icon, hint, off, on]) => (
                 <button key={label} disabled={off} onClick={() => { fn(); setPos(null); }}
                   className="w-full h-8 flex items-center gap-2 pl-2 pr-3 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
                              border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent">
+                  <span className="w-4 text-[#7ec8e3] text-[12px] text-center">{on ? "✓" : ""}</span>
                   <span className="w-[15px] flex justify-center">{icon && <Icon d={icon} size={15} />}</span>
                   <span className="flex-1">{label}</span>
                   {hint && <span className="text-[11px] text-[#9a9a9a]">{hint}</span>}
