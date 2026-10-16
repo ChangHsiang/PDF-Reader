@@ -56,18 +56,14 @@ npm run build        # 产物在 dist/
 
 ### 用 Google 登录 / 备份到 Google 云端硬盘
 
-插件编号固定是 `jagifojihipdmfigeppilfinllpopfmg`，两个回跳地址都由它定：
+插件编号固定是 `jagifojihipdmfigeppilfinllpopfmg`，两个回跳地址都由它定。网站本来就打开了 Google 登录（Supabase 的 Google 提供方和 Google Cloud 里的 OAuth 客户端都已经有了），只要补几项：
 
-1. [Google Cloud 控制台](https://console.cloud.google.com)建一个项目，在「API 和服务 → 库」里启用 **Google Drive API**
-2. 「OAuth 同意屏幕」：外部用户；范围加 `drive.file`、`openid`、`email`（都不是敏感范围）
-3. 「凭据 → 创建 OAuth 客户端 ID」，类型选 **Web 应用**，「已获授权的重定向 URI」加两条：
-   - `https://<Supabase 项目>.supabase.co/auth/v1/callback`（用 Google 登录）
-   - `https://jagifojihipdmfigeppilfinllpopfmg.chromiumapp.org/google`（备份到云端硬盘）
-4. Supabase 后台 → Authentication → Providers → **Google**：打开，填上一步的客户端 ID 和密钥
-5. Supabase 后台 → Authentication → URL Configuration → Redirect URLs 加 `https://jagifojihipdmfigeppilfinllpopfmg.chromiumapp.org/supabase`
-6. 客户端 ID 填进 `.env.local` 的 `VITE_GOOGLE_CLIENT_ID`，重新构建
-
-想要大模型翻译的话，不用改配置：在阅读器的设置里选「自定义 API」，填自己的接口地址和 key（只存在本机浏览器里）。
+- **用 Google 登录**：Supabase 后台 → Authentication → URL Configuration → Redirect URLs 加 `https://jagifojihipdmfigeppilfinllpopfmg.chromiumapp.org/supabase`
+- **备份到 Google 云端硬盘**（在网站用的那个 Google Cloud 项目里）：
+  1. 「API 和服务 → 库」启用 **Google Drive API**
+  2. 「OAuth 同意屏幕 → 数据访问」加范围 `drive.file`（非敏感范围，不用审核）
+  3. 网站那个 OAuth 客户端（Web 应用）的「已获授权的重定向 URI」加 `https://jagifojihipdmfigeppilfinllpopfmg.chromiumapp.org/google`
+  4. 这个客户端的 ID 填进 `.env.local` 的 `VITE_GOOGLE_CLIENT_ID`，重新构建
 
 ## 用到的外部服务
 

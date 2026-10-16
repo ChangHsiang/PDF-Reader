@@ -83,7 +83,7 @@ export async function signIn(email, password) {
    浏览器弹一个 Google 登录窗口（chrome.identity.launchWebAuthFlow，Chrome / Edge 都有），
    Supabase 登录完跳回 https://<插件编号>.chromiumapp.org/supabase?code=…，拿 code + 校验串换 token。
    和网站是同一个 Supabase 项目：同一个邮箱之前用密码注册过的，Supabase 会把两种登录方式并到同一个账号上。
-   需要 Supabase 后台打开 Google 登录、并把上面那个回跳地址加进允许列表（README「用 Google 登录」） */
+   网站已经打开了 Google 登录，这里只需要把上面那个回跳地址加进 Supabase 的 Redirect URLs（README「用 Google 登录」） */
 const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 /** 新用户（第一次用 Google 登录）还没有资料行：照网站注册时那样建一行。用户名从邮箱前缀来，撞了加数字 */
@@ -91,12 +91,13 @@ async function ensureProfile(user, token) {
   const have = await fetchProfile(user.id, token);
   if (have) return have;
   const meta = user.user_metadata || {};
-  const name = meta.full_name || meta.name || (user.email || "").split("@")[0] || "user";
-  const base = ((user.email || "").split("@")[0] || "user").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) || "user";
+  const name = meta.full_name || (user.email || "").split("@")[0] || "用户";
+  // 用户名和网站用 Google 登录时建的一样：邮箱前缀 + "_" + id 前 4 位（App.jsx 的 landAuth）；撞了再换
+  const base = `${(user.email || "user").split("@")[0]}_${user.id.slice(0, 4)}`;
   for (let i = 0; i < 4; i++) {
-    const username = i ? `${base}${Math.floor(1000 + Math.random() * 9000)}` : base;
+    const username = i ? `${base}${Math.floor(10 + Math.random() * 90)}` : base;
     const row = { id: user.id, name, username, institution: "", orcid: null, bio: "", interests: [],
-                  avatar: name.slice(0, 2).toUpperCase(), avatar_url: meta.avatar_url || meta.picture || null };
+                  avatar: name.slice(0, 2).toUpperCase(), avatar_url: meta.avatar_url || null };
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
         method: "POST",
