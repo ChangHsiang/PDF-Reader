@@ -1921,22 +1921,62 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     setToast({ text, ok });
     toastTimer.current = setTimeout(() => setToast(null), 5000);
   };
+  /** 原文件 + 我的标注写成标准 PDF 注释（lib/exportPdf）→ { bytes, count, miss } */
+  const annotatedBytes = async (anns) => {
+    const { items, skipped } = toPdfAnnotations(anns, doc.pages, me?.name || "我");
+    const bytes = await doc.getData();
+    const { bytes: out, failed } = await sharedPdfium().exportAnnotated(bytes.buffer, items);
+    return { bytes: out, count: items.length - failed, miss: skipped + failed };
+  };
   const downloadAnnotated = async () => {
     if (!doc) return;
     const anns = mineView.filter(a => !a.deleted);
     if (!anns.length) { showToast("这篇还没有我的标注，可以直接下载原文件", false); return; }
     showToast("正在生成带标注的 PDF…");
     try {
-      const { items, skipped } = toPdfAnnotations(anns, doc.pages, me?.name || "我");
-      const bytes = await doc.getData();
-      const { bytes: out, failed } = await sharedPdfium().exportAnnotated(bytes.buffer, items);
-      saveBytes(out, `${fileBase()} (annotated).pdf`);
-      const miss = skipped + failed;
-      showToast(`已导出 ${items.length - failed} 条标注${miss ? `，${miss} 条没导出（做于这篇的其它版本、位置对不上，或格式不支持）` : ""}`);
+      const { bytes, count, miss } = await annotatedBytes(anns);
+      saveBytes(bytes, `${fileBase()} (annotated).pdf`);
+      showToast(`已导出 ${count} 条标注${miss ? `，${miss} 条没导出（做于这篇的其它版本、位置对不上，或格式不支持）` : ""}`);
     } catch (e) {
       showToast(`导出失败：${e?.message || e}`, false);
     }
   };
+  /* 打印（标题下拉 / Ctrl+P）：把要印的 PDF 放进一个看不见的 iframe，交给浏览器自带的 PDF 阅读器打印 ——
+     出来的是矢量的原文（不是截图），浏览器的打印对话框（选打印机、页码范围、横竖向、另存为 PDF）照常用。
+     设置里「显示标注」开着、而且这篇有我的标注：印带标注的那份（同「下载带我的标注的 PDF」）；否则印原文件。
+     不能直接 window.print()：那样印的是阅读器页面本身（工具栏 + 只渲染了附近几页的画布） */
+  const printFrame = useRef(null);
+  const printPdf = async () => {
+    if (!doc) return;
+    const anns = settings.showAnnots === false ? [] : mineView.filter(a => !a.deleted);
+    showToast(anns.length ? "正在准备打印（带我的标注）…" : "正在准备打印…");
+    try {
+      const bytes = anns.length ? (await annotatedBytes(anns)).bytes : await doc.getData();
+      printFrame.current?.remove();
+      const href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+      const f = Object.assign(document.createElement("iframe"), { src: href });
+      f.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
+      f.onload = () => setTimeout(() => {
+        try { f.contentWindow.focus(); f.contentWindow.print(); setToast(null); }
+        catch (e) { showToast(`打印失败：${e?.message || e}`, false); }
+      }, 400);                   // PDF 阅读器加载完文档要一点时间，太早调 print 会印出空白
+      document.body.appendChild(f);
+      printFrame.current = f;
+      setTimeout(() => URL.revokeObjectURL(href), 120_000);
+    } catch (e) {
+      showToast(`打印失败：${e?.message || e}`, false);
+    }
+  };
+  const printRef = useRef(printPdf);
+  printRef.current = printPdf;
+  // Ctrl+P：印 PDF（浏览器默认会去印阅读器页面本身）
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p") { e.preventDefault(); printRef.current(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // 「用浏览器自带阅读器打开」：background 给这个标签页加一条放行规则再跳过去
   const openRaw = () => chrome.runtime.sendMessage({ type: "viewer:raw", url });
@@ -1949,7 +1989,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           <TBtn onClick={() => setSideOpen(v => !v)} title="目录 / 缩略图 / 笔记" active={sideOpen}><Icon d={IconSidebar} /></TBtn>
           {/* 点标题弹下拉：文档属性、用浏览器自带的阅读器打开（同 Edge 的「⋯」菜单里那两项） */}
           <TitleMenu label={title || localName || paperKey.replace(/^arxiv:/, "arXiv:")} full={title} disabled={!doc}
-            onProps={() => setPropsOpen(true)} onRaw={openRaw} />
+            onProps={() => setPropsOpen(true)} onRaw={openRaw}
+            onDownload={download} onDownloadAnnotated={downloadAnnotated} onPrint={printPdf} />
           <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading" || selfCite === "none"}
             title={selfCite === "none" ? "没查到这篇论文的引用信息" : "引用"}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
@@ -2013,8 +2054,6 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           active={splitOpen} disabled={!doc}><Icon d={splitDir === "v" ? IconSplitV : IconSplit} /></TBtn>
         <SplitMenu mode={splitOpen ? splitDir : "off"} disabled={!doc} onPick={setSplitMode} />
         <TBtn onClick={enterFullscreen} title="全屏阅读（Esc 退出）" disabled={!doc}><Icon d={IconFull} /></TBtn>
-        <TBtn onClick={download} title="下载 PDF" disabled={!doc}><Icon d={IconDownload} /></TBtn>
-        <DownloadMenu disabled={!doc} onPlain={download} onAnnotated={downloadAnnotated} />
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
         <div className="relative">
           <TBtn onClick={() => setSettingsOpen(true)} title={upd.show ? `设置（有新版本 v${upd.latest.version}）` : "设置"}><Icon d={IconGear} /></TBtn>
@@ -2681,55 +2720,6 @@ function RotateMenu({ disabled, mode, onMode, rotated, onReset }) {
   );
 }
 
-/** 下载按钮旁的下拉：原文件 / 带我的标注的 PDF（样式同分屏下拉） */
-function DownloadMenu({ disabled, onPlain, onAnnotated }) {
-  const [pos, setPos] = useState(null);
-  const btnRef = useRef(null);
-  const panelRef = useRef(null);
-  useEffect(() => {
-    if (!pos) return;
-    const close = (e) => {
-      if (panelRef.current?.contains(e.target) || btnRef.current?.contains(e.target)) return;
-      setPos(null);
-    };
-    const onKey = (e) => { if (e.key === "Escape") setPos(null); };
-    window.addEventListener("pointerdown", close, true);
-    window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", onKey); };
-  }, [pos]);
-  const toggle = () => {
-    if (pos) { setPos(null); return; }
-    const r = btnRef.current.getBoundingClientRect();
-    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 150, window.innerWidth - 250)) });
-  };
-  const items = [
-    [onPlain, "下载原文件", "PDF 原样，不带标注"],
-    [onAnnotated, "下载带我的标注的 PDF", "标注写进文件，其他阅读器也能看"],
-  ];
-  return (
-    <>
-      <button ref={btnRef} onClick={toggle} disabled={disabled} title="下载方式"
-        className={`h-7 w-4 -ml-1 rounded-md flex items-center justify-center border-none shrink-0
-          ${disabled ? "text-[#ffffff4d] bg-transparent cursor-not-allowed"
-            : pos ? "text-[#fff] bg-[#ffffff33] cursor-pointer" : "text-[#c8c8c8] bg-transparent hover:bg-[#ffffff26] cursor-pointer"}`}>
-        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3"
-          strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-      </button>
-      {pos && (
-        <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
-          className="w-max p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
-          {items.map(([fn, label, desc]) => (
-            <button key={label} onClick={() => { setPos(null); fn(); }}
-              className="w-full flex flex-col items-start gap-0.5 px-3 py-1.5 rounded-md text-left bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a]">
-              <span className="text-[13px] font-sans text-[#e6e6e6]">{label}</span>
-              <span className="text-[11px] font-sans text-[#9a9a9a] leading-snug">{desc}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
 
 /** 头像（已登录）：点开是账号菜单 —— 名字 / 邮箱、文献收藏（弹窗，见 LibraryDialog）、退出登录 */
 function AccountMenu({ me, email, onLibrary }) {
@@ -2786,8 +2776,9 @@ function AccountMenu({ me, email, onLibrary }) {
   );
 }
 
-/** 标题：点开下拉 —— 文档属性、用浏览器自带的阅读器打开（新标签）。标题太长被截断时指上去看得到全名 */
-function TitleMenu({ label, full, disabled, onProps, onRaw }) {
+/** 标题：点开下拉 —— 下载（原文件 / 带我的标注）、打印、用浏览器自带的阅读器打开（新标签）、文档属性。
+    标题太长被截断时指上去看得到全名 */
+function TitleMenu({ label, full, disabled, onProps, onRaw, onDownload, onDownloadAnnotated, onPrint }) {
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const panelRef = useRef(null);
@@ -2805,6 +2796,10 @@ function TitleMenu({ label, full, disabled, onProps, onRaw }) {
     setPos({ top: r.bottom + 6, left: Math.max(8, r.left) });
   };
   const items = [
+    [onDownload, "下载", IconDownload],
+    [onDownloadAnnotated, "下载带我的标注的 PDF", <><path d="M12 4v11" /><polyline points="7 10 12 15 17 10" /><path d="M5 20h6" /><path d="M15 20l4-4 2 2-4 4h-2z" /></>],
+    [onPrint, "打印", <><polyline points="6 9 6 3 18 3 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="7" /></>, "Ctrl+P"],
+    null,
     [onRaw, "用浏览器自带的阅读器打开", IconOpen],
     [onProps, "文档属性", <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" /></>],
   ];
@@ -2821,13 +2816,14 @@ function TitleMenu({ label, full, disabled, onProps, onRaw }) {
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
           className="w-max p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
-          {items.map(([fn, text, icon]) => (
-            <button key={text} onClick={() => { setPos(null); fn(); }}
+          {items.map((it, i) => (it ? (
+            <button key={it[1]} onClick={() => { setPos(null); it[0](); }}
               className="w-full h-8 flex items-center gap-2 pl-2.5 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent
                          border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap">
-              <Icon d={icon} size={15} />{text}
+              <Icon d={it[2]} size={15} /><span className="flex-1">{it[1]}</span>
+              {it[3] && <span className="ml-4 text-[11px] text-[#9a9a9a]">{it[3]}</span>}
             </button>
-          ))}
+          ) : <div key={i} className="my-1 border-t border-[#ffffff1f]" />))}
         </div>
       )}
     </>

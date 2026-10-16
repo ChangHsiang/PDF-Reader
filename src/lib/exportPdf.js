@@ -51,6 +51,8 @@ export function toPdfAnnotations(anns, pages, author) {
       // 注释的名字（NM）用笔记的 id：这个文件再用本插件打开时认得出「这条就是我那条」，文件里那份就不画了（不叠两层）
       id: a.id,
       author, contents: a.body || "",
+      // 打印时也印出来（PDF 注释默认不打印，要带 Print 标志；打印功能就是印这份带标注的文件）
+      flags: ["print"],
       created: a.created_at ? new Date(a.created_at) : new Date(),
       modified: a.updated_at ? new Date(a.updated_at) : new Date(),
     };
