@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import CiteDialog from "./CiteDialog";
 import { useKeepInView } from "../lib/useKeepInView";
 import { figuresFor } from "../lib/figures";
@@ -313,7 +314,7 @@ function FigImg({ src, alt, className, onLoad }) {
   return (
     <>
       {state !== "ok" && <span className="text-[11.5px] text-[#9aa0a6] px-2">加载中…</span>}
-      <img src={url} alt={alt} referrerPolicy="no-referrer" onLoad={() => { setState("ok"); onLoad?.(); }} onError={onError}
+      <img src={url} alt={alt} referrerPolicy="no-referrer" onLoad={() => { setState("ok"); onLoad?.(url); }} onError={onError}
         className={className} style={state === "ok" ? undefined : { position: "absolute", width: 1, height: 1, opacity: 0 }} />
     </>
   );
@@ -343,17 +344,50 @@ function FigureView({ figs, onOpen }) {
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [figs]);
+  /* 指上缩略图停一下：在它上方浮出一张大一点的预览（同 Claude 的附件预览），不再用浏览器 title 显示长长的图注 */
+  const [peek, setPeek] = useState(null);         // { i, rect }
+  const loaded = useRef({});                      // 缩略图实际加载成功的地址（可能是 blob:）：预览直接用它，不再下一遍
+  const peekTimer = useRef(0);
+  useEffect(() => () => clearTimeout(peekTimer.current), []);
+  const enter = (i) => (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => setPeek({ i, rect }), 250);
+  };
+  const leave = () => { clearTimeout(peekTimer.current); setPeek(null); };
   return (
-    <div ref={stripRef} className="flex gap-2 overflow-x-auto mt-2.5 pb-2"
+    <div ref={stripRef} className="flex gap-2 overflow-x-auto mt-2.5 pb-2" onScroll={leave}
       style={{ scrollbarWidth: "thin", scrollbarColor: "#c4c7c5 transparent" }}>
       {figs.map((f, i) => (
-        <button key={f.key || i} onClick={() => onOpen(i)} title={f.caption ? f.caption.slice(0, 120) : `图 ${i + 1}`}
+        <button key={f.key || i} onClick={() => { leave(); onOpen(i); }} aria-label={`图 ${i + 1}`}
+          onMouseEnter={enter(i)} onMouseLeave={leave}
           className="shrink-0 w-[124px] h-[86px] rounded-lg border border-[#dadce0] overflow-hidden cursor-zoom-in p-1
                      bg-[#fff] hover:border-[#1a73e8] transition-colors flex items-center justify-center">
-          <FigImg src={f.url} alt={`图 ${i + 1}`} className="w-full h-full object-contain" />
+          <FigImg src={f.url} alt={`图 ${i + 1}`} className="w-full h-full object-contain" onLoad={(u) => { loaded.current[i] = u; }} />
         </button>
       ))}
+      {peek && figs[peek.i] && <FigPeek src={loaded.current[peek.i] || figs[peek.i].url} n={peek.i + 1} total={figs.length} rect={peek.rect} />}
     </div>
+  );
+}
+
+/** 缩略图的悬停预览：白底圆角卡片，图按比例放大，底下一行「图 n / 共 N」。放在缩略图上方，上面放不下就放下方 */
+const PEEK_W = 340, PEEK_H = 260;
+function FigPeek({ src, n, total, rect }) {
+  const above = rect.top - PEEK_H - 40 > 8;
+  const left = Math.min(Math.max(8, rect.left + rect.width / 2 - PEEK_W / 2), window.innerWidth - PEEK_W - 8);
+  const style = above ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 };
+  return createPortal(
+    <div style={{ position: "fixed", left, width: PEEK_W, zIndex: 80, pointerEvents: "none", ...style }}
+      className="rounded-xl bg-[#fff] border border-[#dadce0] shadow-[0_8px_28px_rgba(0,0,0,0.22)] overflow-hidden animate-fade-in">
+      <div className="flex items-center justify-center p-2" style={{ height: PEEK_H }}>
+        <img src={src} alt={`图 ${n}`} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain" />
+      </div>
+      <div className="px-3 py-1.5 border-t border-[#f1f3f4] text-[11.5px] text-[#5f6368] font-sans flex justify-between">
+        <span>图 {n}</span><span className="text-[#9aa0a6]">{n} / {total} · 点击放大</span>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
