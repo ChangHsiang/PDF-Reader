@@ -27,6 +27,7 @@ import { useUpdate, openTab } from "../lib/update";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey, paperCard } from "../lib/refs";
+import { citeData } from "../lib/cite";
 import { sharedPdfium } from "../lib/pdfium/client";
 import { toPdfAnnotations } from "../lib/exportPdf";
 import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer";
@@ -634,16 +635,30 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
      arXiv 的按编号查 INSPIRE / Semantic Scholar；本地文件按 PDF 元数据的标题 / 作者查 Crossref，查不到就不给引用 */
   const [selfCite, setSelfCite] = useState(null);       // null | "loading" | card | "none"
   useEffect(() => { setSelfCite(null); }, [paperKey]);      // 换了论文：重新查（没查到的那篇按钮是灰的）
-  const openSelfCite = async () => {
-    if (!doc) return;
-    setSelfCite("loading");
+  /* 查这篇的卡片：要连着问好几个接口（INSPIRE 搜编号 → 取记录 → 有 DOI 再问 Crossref 补期刊信息），
+     第一次点要等一两秒。所以①打开论文 3 秒后、空闲时先把它查好（结果在 lib/refs、lib/cite 里有缓存），
+     ②点的时候框先弹出来（显示「正在整理引用信息…」），查到了再填进去 */
+  const lookupSelf = async () => {
     let meta = {};
     if (!arxivKey) meta = await doc.props?.().catch(() => ({})) || {};
-    const c = await paperCard({
+    return paperCard({
       arxivBase: arxivKey ? arxivKey.replace(/v\d+$/, "") : null,
       title: meta.Title || title || (localName || "").replace(/\.pdf$/i, ""), author: meta.Author,
     });
-    setSelfCite(c || "none");
+  };
+  const lookupSelfRef = useRef(lookupSelf);
+  lookupSelfRef.current = lookupSelf;
+  useEffect(() => {
+    if (!doc) return undefined;
+    const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1));
+    const t = setTimeout(() => idle(() => lookupSelfRef.current().then(c => c && citeData(c)).catch(() => {})), 3000);
+    return () => clearTimeout(t);
+  }, [doc, paperKey]);
+  const openSelfCite = async () => {
+    if (!doc) return;
+    setSelfCite("loading");
+    const c = await lookupSelf();
+    setSelfCite(s => (s === "loading" ? c || "none" : s));      // 等的时候已经把框关了：不再弹
     if (!c) showToast("没查到这篇论文的引用信息", false);
   };
   /* 设置「显示标注」：关掉时 PDF 文件里自带的注释不画（两栏都重画），我们自己的标注层由 .rh-hide-annots 藏起来 */
@@ -2105,7 +2120,9 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
           </div>
 
           {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
-          {selfCite && typeof selfCite === "object" && <CiteDialog card={selfCite} onClose={() => setSelfCite(null)} />}
+          {selfCite && selfCite !== "none" && (
+            <CiteDialog card={typeof selfCite === "object" ? selfCite : null} onClose={() => setSelfCite(null)} />
+          )}
           {libraryOpen && <LibraryDialog onClose={() => setLibraryOpen(false)} />}
           {propsOpen && <DocProps doc={doc} url={url} localName={localName} paperKey={paperKey}
             annCount={mineView.length} onClose={() => setPropsOpen(false)} />}

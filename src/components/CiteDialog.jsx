@@ -14,7 +14,9 @@ export default function CiteDialog({ card, onClose }) {
   const [data, setData] = useState(null);
   const [copied, setCopied] = useState(null);
 
+  // card 为空 = 还在查这篇是哪条记录（工具栏「引用」先把框弹出来）：先显示「正在整理引用信息…」
   useEffect(() => {
+    if (!card) return undefined;
     let alive = true;
     citeData(card).then(d => { if (alive) setData(d); });
     return () => { alive = false; };
@@ -67,7 +69,7 @@ export default function CiteDialog({ card, onClose }) {
         <div className="flex items-center justify-between gap-3 px-4 pb-4">
           {EXPORTS.map(([label]) => (
             <button key={label} disabled={!data}
-              onClick={async () => copy(label, await exportText(label, data, { bibtexUrl: card.bibtexUrl }))}
+              onClick={async () => copy(label, await exportText(label, data, { bibtexUrl: card?.bibtexUrl }))}
               title={`复制 ${label} 格式`}
               className="flex-1 h-9 rounded-full text-[13px] text-[#1a0dab] bg-[#fff] border border-[#dadce0]
                          cursor-pointer hover:bg-[#f8f9fa] disabled:opacity-40">
