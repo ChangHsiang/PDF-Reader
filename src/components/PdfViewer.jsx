@@ -2805,8 +2805,8 @@ function TitleMenu({ label, full, disabled, onProps, onRaw }) {
     setPos({ top: r.bottom + 6, left: Math.max(8, r.left) });
   };
   const items = [
-    [onProps, "文档属性", <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" /></>],
     [onRaw, "用浏览器自带的阅读器打开", IconOpen],
+    [onProps, "文档属性", <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" /></>],
   ];
   return (
     <>
