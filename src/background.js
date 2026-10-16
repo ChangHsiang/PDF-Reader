@@ -1,6 +1,7 @@
-import { signIn, signOut, getToken, getSession } from "./lib/auth";
+import { signIn, signOut, getToken, getSession, signInWithGoogle } from "./lib/auth";
 import { countComments } from "./lib/comments";
 import { forgetViewerTab, reopenViewerTabs, clearViewerTabs } from "./lib/tabRestore";
+import * as gdrive from "./lib/gdrive";
 
 /**
  * Service worker：
@@ -67,14 +68,23 @@ chrome.runtime.onInstalled.addListener(({ reason }) => {
 chrome.runtime.onStartup.addListener(() => { applyRules(); clearViewerTabs(); });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && "settings" in changes) applyRules();
+  // 笔记变了：开着「自动备份到 Google 云端硬盘」就排一次（攒 2 分钟）
+  if (area === "local" && Object.keys(changes).some(k => k.startsWith("paper:"))) gdrive.scheduleBackup().catch(() => {});
 });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === gdrive.ALARM) gdrive.backupNow(); });
 
 const handlers = {
   "auth:signIn": (m) => signIn(m.email, m.password),
   "auth:signOut": () => signOut(),
+  "auth:google": () => signInWithGoogle(),
   "auth:getToken": (m) => getToken({ force: !!m.force }),
   "auth:session": () => getSession(),
   "comments:count": (m) => countComments(m.paperKey),
+  "gdrive:connect": () => gdrive.connect(),
+  "gdrive:disconnect": () => gdrive.disconnect(),
+  "gdrive:backup": () => gdrive.backupNow(),
+  "gdrive:restore": () => gdrive.restore(),
+  "gdrive:auto": (m) => gdrive.setAuto(m.on),
   /* 「用浏览器自带的阅读器打开」：在阅读器右边开一个新标签（阅读器留着），先开空白页拿到标签号，
      给它加上放行，再让它去原文件地址（不然又被转回阅读器） */
   "viewer:raw": async (m, sender) => {

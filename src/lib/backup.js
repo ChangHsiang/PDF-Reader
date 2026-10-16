@@ -11,13 +11,15 @@
  * 导入是**合并**不是覆盖：同一条标注两边都有，留 updated_at 新的那份（删除的墓碑也算一份）；
  * 设置用备份里的（API Key 保留现在的）；偏好只补现在没有的，阅读位置按时间留新的
  */
-import { currentVersion } from "./update";
+// 版本号直接读 manifest（不引 lib/update：那边带着 React，后台也要用这个文件）
+const currentVersion = () => chrome.runtime.getManifest().version;
 
 const APP = "PDF-Reader";
 const FORMAT = 1;
 const PAPER = "paper:";
 
-export async function exportBackup() {
+/** 备份内容（导出成文件、存到 Google 云端硬盘都用这一份）。后台没有 localStorage：那时 local 是空的，只少了几项偏好 */
+export async function buildBackup() {
   const all = await chrome.storage.local.get(null);
   const storage = {};
   for (const [k, v] of Object.entries(all)) {
@@ -29,12 +31,17 @@ export async function exportBackup() {
   }
   const local = {};
   try {
-    for (let i = 0; i < localStorage.length; i++) {
+    for (let i = 0; i < (globalThis.localStorage?.length || 0); i++) {
       const k = localStorage.key(i);
       if (k?.startsWith("rh_")) local[k] = localStorage.getItem(k);
     }
   } catch { /* 读不了就算了 */ }
-  const data = { app: APP, format: FORMAT, version: currentVersion(), exportedAt: new Date().toISOString(), storage, local };
+  return { app: APP, format: FORMAT, version: currentVersion(), exportedAt: new Date().toISOString(), storage, local };
+}
+
+export async function exportBackup() {
+  const data = await buildBackup();
+  const { storage } = data;
   const d = new Date(), pad = (n) => String(n).padStart(2, "0");
   const name = `PDF-Reader-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
@@ -66,6 +73,11 @@ const newer = (a, b) => String(a?.updated_at || a?.created_at || "") >= String(b
 export async function importBackup(file) {
   let data;
   try { data = JSON.parse(await file.text()); } catch { throw new Error("不是有效的备份文件（读不出 JSON）"); }
+  return importBackupData(data);
+}
+
+/** 把一份备份合并进来（规则见文件头）。云端硬盘恢复也走这里 */
+export async function importBackupData(data) {
   if (data?.app !== APP || !data.storage) throw new Error("不是 PDF-Reader 的备份文件");
   if (data.format > FORMAT) throw new Error("这个备份是更新的版本导出的，请先把插件升级到最新版");
 
@@ -95,6 +107,7 @@ export async function importBackup(file) {
   await chrome.storage.local.set(out);
 
   try {
+    if (!globalThis.localStorage) throw 0;           // 后台里没有 localStorage：偏好跳过
     for (const [k, v] of Object.entries(data.local || {})) {
       if (!k.startsWith("rh_") || typeof v !== "string") continue;
       if (k === "rh_pos") {

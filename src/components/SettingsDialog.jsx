@@ -4,6 +4,7 @@ import { useSettings, setSettings, PAPERS } from "../lib/settings";
 import { viaCustom, LANGS } from "../lib/translate";
 import { useUpdate, openTab, openExtensionsPage } from "../lib/update";
 import { exportBackup, importBackup, currentStats } from "../lib/backup";
+import { GOOGLE_CLIENT_ID } from "../lib/config";
 
 /**
  * 阅读器顶栏「设置」：阅读 + 翻译两组。
@@ -342,6 +343,101 @@ function DataSection({ btn }) {
           {msg.text}
         </div>
       )}
+      {GOOGLE_CLIENT_ID && <DriveBackup btn={btn} onRestored={refresh} />}
+    </div>
+  );
+}
+
+/**
+ * 设置 → 数据 → 备份到 Google 云端硬盘（lib/gdrive，活都在 background 里干）。
+ * 状态在 chrome.storage.local 的 gdrive 键里，这里只读它、发消息
+ */
+function DriveBackup({ btn, onRestored }) {
+  const [g, setG] = useState(null);
+  const [busy, setBusy] = useState("");          // "" | connect | backup | restore
+  const [msg, setMsg] = useState(null);
+  const [offer, setOffer] = useState(null);       // 连上时云端已经有备份：问要不要合并
+  useEffect(() => {
+    chrome.storage.local.get("gdrive").then(r => setG(r.gdrive || null));
+    const fn = (c, area) => { if (area === "local" && "gdrive" in c) setG(c.gdrive.newValue || null); };
+    chrome.storage.onChanged.addListener(fn);
+    return () => chrome.storage.onChanged.removeListener(fn);
+  }, []);
+  const send = (type, extra) => chrome.runtime.sendMessage({ type, ...extra });
+  const ghost = `${btn} text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a] disabled:opacity-50`;
+  const run = async (kind, type, ok) => {
+    setBusy(kind); setMsg(null);
+    const r = await send(type).catch((e) => ({ error: e.message }));
+    setBusy("");
+    if (r?.error || r?.ok === false) { setMsg({ ok: false, text: r.error || "失败了" }); return null; }
+    if (ok) setMsg({ ok: true, text: ok(r) });
+    return r;
+  };
+  const connect = async () => {
+    const r = await run("connect", "gdrive:connect");
+    if (!r) return;
+    if (r.remote) setOffer(r.remote);
+    else send("gdrive:backup");                    // 云端还没有：先传一份
+  };
+  const restore = async () => {
+    setOffer(null);
+    const r = await run("restore", "gdrive:restore", (x) => `已从云端合并：现在共 ${x.papers} 篇论文、${x.anns} 条标注（同一条留较新的）`);
+    if (r) onRestored?.();
+  };
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
+  const box = "rounded-md border border-[#ffffff1f] bg-[#ffffff08] px-3 py-2.5 flex flex-col gap-2 mt-1";
+  if (!g?.email) {
+    return (
+      <div className={box}>
+        <div className="flex items-center gap-2">
+          <span className="flex-1 text-[#e6e6e6]">备份到 Google 云端硬盘</span>
+          <button onClick={connect} disabled={!!busy} className={ghost} style={{ border: "1px solid #ffffff33" }}>
+            {busy === "connect" ? "连接中…" : "连接 Google 账号"}
+          </button>
+        </div>
+        <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
+          笔记自动备份到你自己的云端硬盘（一个 PDF-Reader-backup.json 文件），换电脑、重装后连上同一个账号就能恢复。
+          插件只能读写它自己建的这个文件，看不到云端硬盘里的其它东西。
+        </div>
+        {msg && <div className={`text-[12px] ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
+      </div>
+    );
+  }
+  return (
+    <div className={box}>
+      <div className="flex items-center gap-2">
+        <span className="flex-1 min-w-0 truncate text-[#e6e6e6]">备份到 Google 云端硬盘 · <span className="text-[#9a9a9a]">{g.email}</span></span>
+        <button onClick={() => send("gdrive:disconnect")} className={ghost}>断开</button>
+      </div>
+      {g.needAuth ? (
+        <div className="flex items-center gap-2 text-[12px] text-[#ffb36b]">
+          <span className="flex-1">Google 授权过期了，自动备份暂停</span>
+          <button onClick={connect} disabled={!!busy} className={ghost} style={{ border: "1px solid #ffffff33" }}>重新连接</button>
+        </div>
+      ) : (
+        <div className="text-[12px] text-[#9a9a9a]">
+          {g.lastBackup ? <>上次备份 {when(g.lastBackup)}{g.lastStats ? `（${g.lastStats.papers} 篇、${g.lastStats.anns} 条）` : ""}</> : "还没有备份过"}
+          {g.lastError && <span className="text-[#ff9a9a]"> · 上次失败：{g.lastError}</span>}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <span className="flex-1 flex items-center gap-2">
+          <Switch on={g.auto !== false} onClick={() => send("gdrive:auto", { on: g.auto === false })} />
+          <span className="text-[12px]">笔记有改动时自动备份</span>
+        </span>
+        <button onClick={() => run("backup", "gdrive:backup", (x) => `已备份：${x.papers} 篇论文、${x.anns} 条标注`)} disabled={!!busy}
+          className={ghost} style={{ border: "1px solid #ffffff33" }}>{busy === "backup" ? "备份中…" : "立即备份"}</button>
+        <button onClick={restore} disabled={!!busy} className={ghost} style={{ border: "1px solid #ffffff33" }}>
+          {busy === "restore" ? "恢复中…" : "从云端恢复"}</button>
+      </div>
+      {offer && (
+        <div className="rounded-md bg-[#7ec8e314] border border-[#7ec8e340] px-2.5 py-2 text-[12px] leading-relaxed flex items-center gap-2">
+          <span className="flex-1">云端已经有一份 {when(offer)} 的备份，要合并到这台电脑吗？</span>
+          <button onClick={restore} className={`${btn} font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea]`}>合并</button>
+          <button onClick={() => setOffer(null)} className={ghost}>不用</button>
+        </div>
+      )}
+      {msg && <div className={`text-[12px] leading-relaxed ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
     </div>
   );
 }

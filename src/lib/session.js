@@ -8,6 +8,7 @@ const send = (msg) => chrome.runtime.sendMessage(msg);
 
 export const signIn = (email, password) => send({ type: "auth:signIn", email, password });
 export const signOut = () => send({ type: "auth:signOut" });
+export const signInWithGoogle = () => send({ type: "auth:google" });
 export const getToken = (force = false) => send({ type: "auth:getToken", force });
 
 export async function readSession() {

@@ -1,5 +1,7 @@
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+/* Google OAuth 客户端 ID（「备份到 Google 云端硬盘」用，公开的，不是密钥）。不填就不显示那一块 */
+export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 /** 构建时有没有配 Supabase（.env.local）。开源出去别人自己构建、不填的话就是 false：
     笔记照常存本机，只是没有登录同步和论文评论 —— 界面上要说清楚是「没配置」，别说成网络问题 */
 export const HAS_BACKEND = !!(SUPABASE_URL && SUPABASE_ANON_KEY);

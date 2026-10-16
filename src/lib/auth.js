@@ -79,6 +79,66 @@ export async function signIn(email, password) {
   return { session: s };
 }
 
+/* ── 用 Google 账号登录（Supabase 的 OAuth + PKCE）──────────────────────────
+   浏览器弹一个 Google 登录窗口（chrome.identity.launchWebAuthFlow，Chrome / Edge 都有），
+   Supabase 登录完跳回 https://<插件编号>.chromiumapp.org/supabase?code=…，拿 code + 校验串换 token。
+   和网站是同一个 Supabase 项目：同一个邮箱之前用密码注册过的，Supabase 会把两种登录方式并到同一个账号上。
+   需要 Supabase 后台打开 Google 登录、并把上面那个回跳地址加进允许列表（README「用 Google 登录」） */
+const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+/** 新用户（第一次用 Google 登录）还没有资料行：照网站注册时那样建一行。用户名从邮箱前缀来，撞了加数字 */
+async function ensureProfile(user, token) {
+  const have = await fetchProfile(user.id, token);
+  if (have) return have;
+  const meta = user.user_metadata || {};
+  const name = meta.full_name || meta.name || (user.email || "").split("@")[0] || "user";
+  const base = ((user.email || "").split("@")[0] || "user").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) || "user";
+  for (let i = 0; i < 4; i++) {
+    const username = i ? `${base}${Math.floor(1000 + Math.random() * 9000)}` : base;
+    const row = { id: user.id, name, username, institution: "", orcid: null, bio: "", interests: [],
+                  avatar: name.slice(0, 2).toUpperCase(), avatar_url: meta.avatar_url || meta.picture || null };
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(row),
+      });
+      if (r.ok) return (await r.json())?.[0] || row;
+      if (r.status !== 409) break;              // 409 = 用户名撞了，换一个再试
+    } catch { break; }
+  }
+  return null;
+}
+
+export async function signInWithGoogle() {
+  if (!chrome.identity?.launchWebAuthFlow) return { error: "这个浏览器不支持弹出 Google 登录" };
+  const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const redirect = chrome.identity.getRedirectURL("supabase");
+  const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirect)}` +
+              `&code_challenge=${challenge}&code_challenge_method=s256`;
+  let back;
+  try { back = await chrome.identity.launchWebAuthFlow({ url, interactive: true }); }
+  catch (e) { return { error: /cancel|closed|did not approve/i.test(e?.message || "") ? "已取消" : `Google 登录没有完成：${e?.message || e}` }; }
+  const u = new URL(back);
+  const q = new URLSearchParams(u.search + "&" + u.hash.replace(/^#/, ""));
+  const code = q.get("code");
+  if (!code) {
+    const msg = q.get("error_description") || q.get("error") || "没有拿到登录结果";
+    return { error: /provider is not enabled|unsupported provider/i.test(msg) ? "网站还没打开 Google 登录（Supabase 后台 → Authentication → Providers → Google）" : msg };
+  }
+  const { res, data, netErr } = await authFetch("/auth/v1/token?grant_type=pkce", { auth_code: code, code_verifier: verifier });
+  if (netErr) return { error: netErr };
+  if (!res.ok || !data?.access_token) return { error: data?.error_description || data?.msg || "Google 登录失败" };
+  const profile = await ensureProfile(data.user, data.access_token);
+  const s = {
+    access_token: data.access_token, refresh_token: data.refresh_token,
+    uid: data.user?.id, email: data.user?.email || "", profile, provider: "google",
+  };
+  await saveSession(s);
+  return { session: s };
+}
+
 export async function signOut() {
   await saveSession(null);
 }
