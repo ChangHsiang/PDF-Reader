@@ -371,7 +371,7 @@ function FigureView({ figs, onOpen }) {
   );
 }
 
-/** 缩略图的悬停预览：白底圆角卡片，图按比例放大，底下一行「图 n / 共 N」。放在缩略图上方，上面放不下就放下方 */
+/** 缩略图的悬停预览：白底圆角卡片，图按比例放大，底下一行「图 n · n / N」。放在缩略图上方，上面放不下就放下方 */
 const PEEK_W = 340, PEEK_H = 260;
 function FigPeek({ src, n, total, rect }) {
   const above = rect.top - PEEK_H - 40 > 8;
@@ -384,7 +384,7 @@ function FigPeek({ src, n, total, rect }) {
         <img src={src} alt={`图 ${n}`} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain" />
       </div>
       <div className="px-3 py-1.5 border-t border-[#f1f3f4] text-[11.5px] text-[#5f6368] font-sans flex justify-between">
-        <span>图 {n}</span><span className="text-[#9aa0a6]">{n} / {total} · 点击放大</span>
+        <span>图 {n}</span><span className="text-[#9aa0a6]">{n} / {total}</span>
       </div>
     </div>,
     document.body,
