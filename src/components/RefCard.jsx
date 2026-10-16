@@ -7,6 +7,8 @@ import ImageLightbox from "./ImageLightbox";
 import { resolveReference } from "../lib/refs";
 import { MathText } from "./bits";
 import { openAlexMeta, relatedFor, allVersions } from "../lib/openalex";
+import { useSession } from "../lib/useSession";
+import { findBookmark, saveBookmark, removeBookmark, listCollections } from "../lib/library";
 
 /**
  * 文献卡片：点正文里的引用号弹出（样式参照 Google 学术 PDF 阅读器）。
@@ -243,6 +245,7 @@ export default function RefCard({ pos, group, current, entries, arxivBase, onJum
               {(c.arxiv || c.doi) && <button onClick={() => openSub("related")} className={act}>相关文章</button>}
               {oa?.versions > 0 && <button onClick={() => openSub("versions")} className={act}>所有 {oa.versions} 个版本</button>}
               <span className="flex-1" />
+              {(c.arxiv || c.doi) && <BookmarkButton key={c.arxiv || c.doi} card={c} act={act} />}
               <span className="text-[11px] text-[#9aa0a6]">{c.source}</span>
             </div>
           </>
@@ -518,5 +521,86 @@ function SubList({ view, onBack, onOpenArxiv }) {
       )}
       </div>
     </div>
+  );
+}
+
+/**
+ * 「收藏」（和 ResearchHub 网站的文献收藏是同一份，见 lib/library）：没收藏时点一下弹「收藏到…」选收藏夹，
+ * 收藏过的再点一下取消。没登录时提示先登录。样式同旁边的「引用」那一排
+ */
+function BookmarkButton({ card, act }) {
+  const session = useSession();
+  const [row, setRow] = useState(undefined);       // undefined 还在查 / null 没收藏 / { id }
+  const [cols, setCols] = useState(null);          // 收藏夹列表（打开选择器时才拉）
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const boxRef = useRef(null);
+  useEffect(() => {
+    let alive = true;
+    if (!session?.uid) { setRow(null); return; }
+    findBookmark(card).then(r => { if (alive) setRow(r); }).catch(() => { if (alive) setRow(null); });
+    return () => { alive = false; };
+  }, [session?.uid, card]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!boxRef.current?.contains(e.target)) setOpen(false); };
+    window.addEventListener("pointerdown", close, true);
+    return () => window.removeEventListener("pointerdown", close, true);
+  }, [open]);
+  useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(""), 2500); return () => clearTimeout(t); }, [msg]);
+
+  const click = async () => {
+    if (!session?.uid) { setMsg("登录后才能收藏"); return; }
+    if (busy || row === undefined) return;
+    if (row) {
+      setBusy(true);
+      if (await removeBookmark(row.id)) setRow(null); else setMsg("取消收藏失败");
+      setBusy(false);
+      return;
+    }
+    setOpen(o => !o);
+    if (!cols) listCollections().then(setCols).catch(() => setCols([]));
+  };
+  const pick = async (colId) => {
+    setBusy(true);
+    try { setRow(await saveBookmark(card, colId)); setOpen(false); }
+    catch (e) { setMsg(e.message || "收藏失败"); }
+    setBusy(false);
+  };
+  const saved = !!row;
+  const item = "w-full flex items-center gap-2 px-3 py-1.5 text-left text-[13px] text-[#202124] bg-transparent border-none cursor-pointer hover:bg-[#f1f3f4] disabled:opacity-50";
+  const folder = <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#5f6368]"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>;
+  return (
+    <span ref={boxRef} className="relative">
+      <button onClick={click} disabled={busy} className={`${act} ${saved ? "!text-[#b06000]" : ""}`}
+        title={saved ? "已收藏（点一下取消）" : "收藏到 ResearchHub 文献收藏"}>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z" />
+        </svg>
+        {saved ? "已收藏" : "收藏"}
+      </button>
+      {msg && (
+        <span className="absolute right-0 bottom-full mb-1.5 whitespace-nowrap px-2 py-1 rounded bg-[#3c4043] text-[#fff] text-[11.5px]">{msg}</span>
+      )}
+      {open && (
+        <div className="absolute right-0 bottom-full mb-1.5 w-52 py-1 rounded-lg bg-[#fff] border border-[#dadce0] shadow-[0_4px_16px_rgba(0,0,0,0.18)] z-10">
+          <div className="px-3 py-1 text-[11px] text-[#5f6368]">收藏到…</div>
+          <div className="max-h-[220px] overflow-y-auto">
+            <button onClick={() => pick(null)} disabled={busy} className={item}>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#5f6368]"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
+              <span className="truncate">默认（未分类）</span>
+            </button>
+            {cols?.length > 0 && <div className="mx-2 my-1 border-t border-[#e8eaed]" />}
+            {cols === null && <div className="px-3 py-1.5 text-[12px] text-[#9aa0a6]">…</div>}
+            {cols?.map(col => (
+              <button key={col.id} onClick={() => pick(col.id)} disabled={busy} className={item}>
+                {folder}<span className="truncate">{col.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </span>
   );
 }

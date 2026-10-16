@@ -22,6 +22,7 @@ import TranslatePop from "./TranslatePop";
 import SettingsDialog from "./SettingsDialog";
 import DocProps from "./DocProps";
 import CiteDialog from "./CiteDialog";
+import LibraryDialog from "./LibraryDialog";
 import { useUpdate, openTab } from "../lib/update";
 import { useSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
@@ -628,6 +629,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     refitBoth();
   };
   const [propsOpen, setPropsOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);       // 文献收藏（头像菜单里打开）
   /* 「引用」这篇论文本身（同文献卡片里的「引用」，GB/T 7714 / MLA / APA + BibTeX 等）：
      arXiv 的按编号查 INSPIRE / Semantic Scholar；本地文件按 PDF 元数据的标题 / 作者查 Crossref，查不到就不给引用 */
   const [selfCite, setSelfCite] = useState(null);       // null | "loading" | card | "none"
@@ -2014,9 +2016,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
             <Icon d={IconChat} />{commentCount ? <span className="tabular-nums">{commentCount}</span> : null}
           </TBtn>
         )}
-        {me && (
-          <span className="ml-0.5 shrink-0" title={`已登录：${me.name}`}><Avatar name={me.name} url={me.avatar_url} size={22} /></span>
-        )}
+        {me && <AccountMenu me={me} email={session?.email} onLibrary={() => setLibraryOpen(true)} />}
         </div>
       </div>
 
@@ -2106,6 +2106,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
 
           {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
           {selfCite && typeof selfCite === "object" && <CiteDialog card={selfCite} onClose={() => setSelfCite(null)} />}
+          {libraryOpen && <LibraryDialog onClose={() => setLibraryOpen(false)} />}
           {propsOpen && <DocProps doc={doc} url={url} localName={localName} paperKey={paperKey}
             annCount={mineView.length} onClose={() => setPropsOpen(false)} />}
           {toast && (
@@ -2711,6 +2712,56 @@ function DownloadMenu({ disabled, onPlain, onAnnotated }) {
               <span className="text-[11px] font-sans text-[#9a9a9a] leading-snug">{desc}</span>
             </button>
           ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** 头像（已登录）：点开是账号菜单 —— 名字 / 邮箱、文献收藏（弹窗，见 LibraryDialog）、退出登录 */
+function AccountMenu({ me, email, onLibrary }) {
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+  useEffect(() => {
+    if (!pos) return;
+    const close = (e) => { if (!panelRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setPos(null); };
+    const onKey = (e) => { if (e.key === "Escape") setPos(null); };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", onKey); };
+  }, [pos]);
+  const toggle = () => {
+    if (pos) { setPos(null); return; }
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+  };
+  const item = "w-full h-8 flex items-center gap-2 pl-2.5 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap";
+  return (
+    <>
+      <button ref={btnRef} onClick={toggle} title={`已登录：${me.name}`}
+        className={`ml-0.5 shrink-0 p-0.5 rounded-full border-none cursor-pointer ${pos ? "bg-[#ffffff33]" : "bg-transparent hover:bg-[#ffffff26]"}`}>
+        <Avatar name={me.name} url={me.avatar_url} size={22} />
+      </button>
+      {pos && (
+        <div ref={panelRef} style={{ position: "fixed", top: pos.top, right: pos.right, zIndex: 60 }}
+          className="w-max min-w-[180px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
+          <div className="flex items-center gap-2.5 px-2.5 py-2">
+            <Avatar name={me.name} url={me.avatar_url} size={30} />
+            <div className="min-w-0">
+              <div className="text-[13px] text-[#fff] font-bold truncate max-w-[200px]">{me.name}</div>
+              {email && <div className="text-[11.5px] text-[#9a9a9a] truncate max-w-[200px]">{email}</div>}
+            </div>
+          </div>
+          <div className="my-1 border-t border-[#ffffff1f]" />
+          <button className={item} onClick={() => { setPos(null); onLibrary(); }}>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z" /></svg>
+            文献收藏
+          </button>
+          <button className={item} onClick={() => { setPos(null); chrome.runtime.sendMessage({ type: "auth:signOut" }); }}>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+            退出登录
+          </button>
         </div>
       )}
     </>
