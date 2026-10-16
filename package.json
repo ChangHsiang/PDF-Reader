@@ -1,7 +1,7 @@
 {
   "name": "pdf-reader",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "arXiv PDF 笔记阅读器：标注、文献卡片、划词翻译（Chrome / Edge 扩展）",
   "license": "MIT",
   "type": "module",

@@ -662,7 +662,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     setSelfCite(s => (s === "loading" ? c || "none" : s));      // 等的时候已经把框关了：不再弹
     if (!c) showToast("没查到这篇论文的引用信息", false);
   };
-  /* 设置「显示标注」：关掉时 PDF 文件里自带的注释不画（两栏都重画），我们自己的标注层由 .rh-hide-annots 藏起来 */
+  /* 「显示标注」（点标题的下拉里开关）：关掉时 PDF 文件里自带的注释不画（两栏都重画），我们自己的标注层由 .rh-hide-annots 藏起来 */
   const showAnnots = settings.showAnnots !== false;
   useEffect(() => {
     [apiRef.current?.viewer, splitApiRef.current?.viewer].filter(Boolean).forEach(v => v.setAnnotations(showAnnots));
@@ -1943,7 +1943,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
   };
   /* 打印（标题下拉 / Ctrl+P）：把要印的 PDF 放进一个看不见的 iframe，交给浏览器自带的 PDF 阅读器打印 ——
      出来的是矢量的原文（不是截图），浏览器的打印对话框（选打印机、页码范围、横竖向、另存为 PDF）照常用。
-     设置里「显示标注」开着、而且这篇有我的标注：印带标注的那份（同「下载带我的标注的 PDF」）；否则印原文件。
+     「显示标注」开着、而且这篇有我的标注：印带标注的那份（同「下载带我的标注的 PDF」）；否则印原文件。
      不能直接 window.print()：那样印的是阅读器页面本身（工具栏 + 只渲染了附近几页的画布） */
   const printFrame = useRef(null);
   const printPdf = async () => {
@@ -2801,7 +2801,7 @@ function TitleMenu({ label, full, disabled, onProps, onRaw, onDownload, onDownlo
     [onDownloadAnnotated, "下载带我的标注的 PDF", <><path d="M12 4v11" /><polyline points="7 10 12 15 17 10" /><path d="M5 20h6" /><path d="M15 20l4-4 2 2-4 4h-2z" /></>],
     [onPrint, "打印", <><polyline points="6 9 6 3 18 3 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="7" /></>, "Ctrl+P"],
     null,
-    // 显示 / 隐藏所有标注（同设置 → 阅读 →「显示标注」；同 Chrome 阅读器「⋮」里的「注释」）：前面打勾表示开着
+    // 显示 / 隐藏所有标注（同 Chrome 阅读器「⋮」里的「注释」；存在设置的 showAnnots 里）：前面打勾表示开着
     [onToggleAnnots, "显示标注", null, null, showAnnots],
     null,
     [onRaw, "用浏览器自带的阅读器打开", IconOpen],
