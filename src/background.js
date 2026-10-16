@@ -75,12 +75,13 @@ const handlers = {
   "auth:getToken": (m) => getToken({ force: !!m.force }),
   "auth:session": () => getSession(),
   "comments:count": (m) => countComments(m.paperKey),
+  /* 「用浏览器自带的阅读器打开」：在阅读器右边开一个新标签（阅读器留着），先开空白页拿到标签号，
+     给它加上放行，再让它去原文件地址（不然又被转回阅读器） */
   "viewer:raw": async (m, sender) => {
-    const tabId = sender.tab?.id;
-    if (tabId == null) return;
+    const tab = await chrome.tabs.create({ url: "about:blank", index: sender.tab ? sender.tab.index + 1 : undefined });
+    const tabId = tab.id;
     if (/^file:/i.test(m.url || "")) {                // 本地文件：放行这个标签这一次
       rawFileTabs.add(tabId);
-      forgetViewerTab(tabId);
       await chrome.tabs.update(tabId, { url: m.url });
       return;
     }
@@ -92,7 +93,6 @@ const handlers = {
         condition: { tabIds: [tabId], resourceTypes: ["main_frame"], requestDomains: ["arxiv.org"] },
       }],
     });
-    forgetViewerTab(tabId);            // 这个标签离开阅读器了
     await chrome.tabs.update(tabId, { url: m.url });
   },
   "viewer:open": async (m, sender) => {
