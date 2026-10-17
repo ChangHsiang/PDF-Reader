@@ -48,8 +48,8 @@ export default function OpenPdfToggles({ Switch, compact = false }) {
   );
   return (
     <>
-      {row("在线 PDF 用笔记阅读器", onlineHint, s.interceptOnline, toggleOnline)}
-      {row("本地 PDF 用笔记阅读器", localHint, s.interceptLocal, () => setSettings({ interceptLocal: !s.interceptLocal }))}
+      {row("在线 PDF", onlineHint, s.interceptOnline, toggleOnline)}
+      {row("本地 PDF", localHint, s.interceptLocal, () => setSettings({ interceptLocal: !s.interceptLocal }))}
     </>
   );
 }
