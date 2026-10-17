@@ -699,7 +699,7 @@ const toggleIn = (set, v) => {
    筛选条件：颜色 / 类型 / 标签各自多选，组内是「或」、组间是「且」。 */
 export function NotesList({
   mine, others, copiedIds, scope, setScope, onGo, onEdit, onDelete, onCopy,
-  onAddPageNote, visibility, onVisibility, onExport, exported, page, canShare, doc, activeId,
+  onAddPageNote, visibility, onVisibility, page, canShare, doc, activeId,
   onShareExcluded, hiddenOthers = new Set(), onHideOther,
 }) {
   const showMine = scope === "mine" || scope === "all";
@@ -774,12 +774,6 @@ export function NotesList({
                 ${visibility === "public" ? "text-[#7ec8e3] bg-[#7ec8e31a]" : "text-[#b8b8b8] bg-[#ffffff1a]"}`}>
               {visibility === "public" ? "公开" : "私有"}
             </button>}
-            {/* 复制反馈走全站的「就地变身」：变绿 + 换文案，不弹浮动气泡 */}
-            <button onClick={onExport} title="导出为 Markdown（复制到剪贴板）"
-              className={`py-1 px-2 rounded text-[11px] font-sans border-none cursor-pointer whitespace-nowrap
-                ${exported ? "text-[#7ee3a0] bg-[#7ee3a01a]" : "text-[#b8b8b8] bg-[#ffffff1a] hover:bg-[#ffffff33]"}`}>
-              {exported ? "✓ 已复制" : "导出"}
-            </button>
           </div>
         )}
 

@@ -5,7 +5,7 @@ import {
 } from "../lib/pdfAnchor";
 import {
   baseOf, loadMine, watchPaper, addAnnotation, updateAnnotation, deleteAnnotation, setVisibility,
-  copyAnnotation, copiedSourceIds, syncPaper, fetchOthers, exportMarkdown, normTags, isLocalKey,
+  copyAnnotation, copiedSourceIds, syncPaper, fetchOthers, normTags, isLocalKey,
   setShareExcluded, loadHiddenOthers, setHiddenOther, undo, redo, historyGroup, historyState, watchHistory, adoptVersionless,
 } from "../lib/notes";
 import { countComments } from "../lib/comments";
@@ -315,7 +315,6 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
   const [pending, setPending] = useState(null);
   const [draft, setDraft] = useState(null);
   const [fixes, setFixes] = useState({});
-  const [exported, setExported] = useState(false);
   const [sync, setSync] = useState({ busy: false, error: null });
   const [commentCount, setCommentCount] = useState(null);
   const [tool, setTool] = useState("text");
@@ -1424,15 +1423,6 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
     setDraft(null);
   };
 
-  const doExport = async () => {
-    const names = {};
-    othersView.forEach(o => { if (o.author) names[o.author.id] = o.author.username || o.author.name; });
-    const md = exportMarkdown({ paperTitle: title, paperUrl: url, paperKey, annotations: mineView, authorNames: names });
-    try { await navigator.clipboard.writeText(md); } catch { return; }
-    setExported(true);
-    setTimeout(() => setExported(false), 1600);
-  };
-
   /** 页级笔记：长公式、整张图、「这一页的推导有问题」这类没法划选的东西 */
   const addPageNote = () => setDraft({
     anchors: [{ page, rects: null, quote: null, prefix: null, suffix: null }],
@@ -1451,7 +1441,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
     onAddPageNote: addPageNote,
     visibility: myNote?.visibility || "private",
     onVisibility: async (v) => { await setVisibility(paperKey, meta, v); reload(); bump(); },
-    onExport: doExport, exported, page, canShare: !!uid, doc, activeId,
+    page, canShare: !!uid, doc, activeId,
     // 二级分享：整份分享时某几条不分享；「他人」里隐藏某几条
     onShareExcluded: async (a, excluded) => { await setShareExcluded(a.paper_key || paperKey, a.id, excluded); reload(); bump(); },
     hiddenOthers, onHideOther: hideOther,
