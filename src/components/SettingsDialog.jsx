@@ -192,7 +192,7 @@ export default function SettingsDialog({ onClose }) {
           <Row title="公式旁显示「复制 LaTeX」按钮" desc="仅 arXiv 论文">
             <Switch on={s.eqCopy} onClick={() => setSettings({ eqCopy: !s.eqCopy })} />
           </Row>
-          <Row title="标出所有链接" desc="所有链接下面画一道虚线">
+          <Row title="标出所有链接" desc="所有链接加上蓝色下划线">
             <Switch on={s.showLinks} onClick={() => setSettings({ showLinks: !s.showLinks })} />
           </Row>
 
