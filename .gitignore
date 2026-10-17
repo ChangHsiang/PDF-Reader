@@ -8,3 +8,7 @@ dist
 Thumbs.db
 .vscode/
 .idea/
+
+# 开发记录（只给自己看，不上传）
+CLAUDE.md
+docs/dev/
