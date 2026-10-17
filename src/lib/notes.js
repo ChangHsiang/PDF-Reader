@@ -64,8 +64,7 @@ const visibleTo = (uid) => (a) => !a.deleted && (!uid || a.account == null || a.
 export async function loadMine(paperKey, uid) {
   const d = await load(baseOf(paperKey));
   return {
-    // 没带版本号的笔记元信息（以前从 arxiv.org/pdf/<id> 打开时存的）算最新版的，见 PdfViewer 的 thisVersion
-    note: d.notes[paperKey] || d.notes[baseOf(paperKey)] || null,
+    note: d.notes[paperKey] || null,
     annotations: d.anns.filter(visibleTo(uid)),
     pending: d.anns.filter(a => a.sync !== "synced" && (!uid || a.account == null || a.account === uid)).length,
   };
@@ -160,6 +159,31 @@ export function addAnnotation(paperKey, meta, fields) {
     d.anns.push(row);
     record({ paperKey, before: null, after: snap(row), note: snap(note) });
     return row;
+  });
+}
+
+/**
+ * 没带版本号的笔记（以前从 arxiv.org/pdf/<id> 这种地址打开时存的，paper_key = arxiv:<id>）归到最新版名下（latestKey = arxiv:<id>vN）：
+ * 那种地址打开的就是当时的最新版。只动自己的（account 为空或是当前账号）；这篇的公开 / 私有设置一起带过去，
+ * 不然分享时这些笔记还挂在没版本号的那份下面，别人看不到。标成待推，同步时云端那几行也跟着挪过去。
+ * 不进撤销历史（不是用户的操作）。返回挪了几条
+ */
+export function adoptVersionless(latestKey, uid) {
+  const base = baseOf(latestKey);
+  if (!/^arxiv:/.test(base) || base === latestKey) return Promise.resolve(0);
+  return mutate(base, (d) => {
+    let n = 0;
+    for (const a of d.anns) {
+      if (a.paper_key !== base || (a.account && a.account !== uid)) continue;
+      Object.assign(a, { paper_key: latestKey, sync: "dirty", updated_at: now() });
+      n++;
+    }
+    const old = d.notes[base];
+    if (n && old && !d.notes[latestKey]) {
+      d.notes[latestKey] = { ...old, paper_key: latestKey, remote_id: null, remote_uid: null,
+                             dirty: old.visibility && old.visibility !== "private" ? true : old.dirty, updated_at: now() };
+    }
+    return n;
   });
 }
 

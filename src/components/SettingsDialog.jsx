@@ -412,13 +412,13 @@ function DriveBackup({ btn, onRestored }) {
     return (
       <div className={box}>
         <div className="flex items-center gap-2">
-          <span className="flex-1 text-[#e6e6e6]">备份到 Google 云端硬盘</span>
+          <span className="flex-1 text-[#e6e6e6]">Google 云端硬盘：备份与恢复</span>
           <button onClick={connect} disabled={!!busy} className={ghost} style={{ border: "1px solid #ffffff33" }}>
             {busy === "connect" ? "连接中…" : "连接 Google 账号"}
           </button>
         </div>
         <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
-          自动备份到你的云端硬盘，换电脑后连上同一账号就能恢复。插件只能访问它自己建的备份文件。
+          连接后自动备份笔记，也可以从云端恢复（换电脑后连上同一账号即可）。插件只能访问它自己建的备份文件。
         </div>
         {msg && <div className={`text-[12px] ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
       </div>
@@ -427,7 +427,7 @@ function DriveBackup({ btn, onRestored }) {
   return (
     <div className={box}>
       <div className="flex items-center gap-2">
-        <span className="flex-1 min-w-0 truncate text-[#e6e6e6]">备份到 Google 云端硬盘 · <span className="text-[#9a9a9a]">{g.email}</span></span>
+        <span className="flex-1 min-w-0 truncate text-[#e6e6e6]">Google 云端硬盘 · <span className="text-[#9a9a9a]">{g.email}</span></span>
         <button onClick={() => send("gdrive:disconnect")} className={ghost}>断开</button>
       </div>
       {g.needAuth ? (

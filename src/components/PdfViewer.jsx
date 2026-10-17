@@ -6,7 +6,7 @@ import {
 import {
   baseOf, loadMine, watchPaper, addAnnotation, updateAnnotation, deleteAnnotation, setVisibility,
   copyAnnotation, copiedSourceIds, syncPaper, fetchOthers, exportMarkdown, normTags, isLocalKey,
-  setShareExcluded, loadHiddenOthers, setHiddenOther, undo, redo, historyGroup, historyState, watchHistory,
+  setShareExcluded, loadHiddenOthers, setHiddenOther, undo, redo, historyGroup, historyState, watchHistory, adoptVersionless,
 } from "../lib/notes";
 import { countComments } from "../lib/comments";
 import { sitePaperUrl } from "../lib/config";
@@ -167,7 +167,7 @@ function SyncBadge({ uid, state, pending, onLogin, onSync, manual }) {
   );
 }
 
-export default function PdfViewer({ url, paperKey: givenKey, localName, title, session, onLogin, initialPanel }) {
+export default function PdfViewer({ url, paperKey: givenKey, latestKey, localName, title, session, onLogin, initialPanel }) {
   const containerRef = useRef(null);
   const viewerElRef = useRef(null);
   const apiRef = useRef(null);        // { viewer, linkService, eventBus }
@@ -379,9 +379,17 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     return () => clearTimeout(t);
   }, [uid, editTick, runSync, autoSync]);
 
-  /* 这条标注是不是做在正在看的这个版本上。没带版本号的（以前从 arxiv.org/pdf/<id> 这种地址打开时存的）
-     算最新版 —— 那种地址打开的就是当时的最新版；现在没带版本的地址会先查出 vN 再打开（viewer/main.jsx） */
-  const thisVersion = useCallback((k) => !k || k === paperKey || (/^arxiv:/.test(k) && !/v\d+$/.test(k) && paperKey.startsWith(`${k}v`)), [paperKey]);
+  /* 这条标注是不是做在正在看的这个版本上。没带版本号的（以前从 arxiv.org/pdf/<id> 这种地址打开时存的，别人的也可能有）
+     算**最新版** —— 那种地址打开的就是当时的最新版。最新版是哪个由 viewer/main.jsx 查 arXiv 摘要页得到（latestKey）；
+     还没查到时先当成正在看的这版（和改之前一样），查到了再按它算。明确打开旧版（…v1）时这些笔记不画在 v1 上 */
+  const thisVersion = useCallback((k) => !k || k === paperKey
+    || (/^arxiv:/.test(k) && !/v\d+$/.test(k) && paperKey.startsWith(`${k}v`) && (!latestKey || latestKey === paperKey)), [paperKey, latestKey]);
+  /* 打开的正是最新版：把自己那些没带版本号的笔记正式归到这一版（lib/notes 的 adoptVersionless，公开设置一起带过去） */
+  useEffect(() => {
+    if (!latestKey || latestKey !== paperKey) return;
+    adoptVersionless(latestKey, uid).then(n => { if (n) { reload(); bump(); } }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestKey, paperKey, uid]);
   /* 别的版本做的标注：坐标一律不用，降级成页级 + 「位置可能不准」，再按 quote 找回页码 */
   const applyFix = useCallback((a) => {
     if (thisVersion(a.paper_key)) return a;

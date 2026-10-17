@@ -118,5 +118,5 @@ export async function importBackupData(data) {
       } else if (localStorage.getItem(k) == null) localStorage.setItem(k, v);
     }
   } catch { /* 偏好恢复不了不要紧 */ }
-  return stats(out);
+  return currentStats();               // 合并之后本机一共多少（界面上说「现在共 X 篇」）
 }

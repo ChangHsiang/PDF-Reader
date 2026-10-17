@@ -92,6 +92,8 @@ function App() {
   const target = isLocal ? (local?.paperKey ? { id: local.arxivId, url: rawUrl, paperKey: local.paperKey } : null)
     : verId ? { id: verId, url: `https://arxiv.org/pdf/${verId}` } : online;
   const [title, setTitle] = useState(null);
+  /* arXiv 的最新版本（arxiv:<id>vN，摘要页查到的）：没带版本号的旧笔记只算这一版的（PdfViewer 的 thisVersion） */
+  const [latestKey, setLatestKey] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
@@ -111,7 +113,10 @@ function App() {
     // 标签名同 arXiv 摘要页：「[编号] 标题」（编号不带版本号）
     const bare = target.id.replace(/v\d+$/, "");
     document.title = `[${bare}]`;
-    fetchMeta(bare).then(m => { if (m?.title) { setTitle(m.title); document.title = `[${bare}] ${m.title}`; } });
+    fetchMeta(bare).then(m => {
+      if (m?.title) { setTitle(m.title); document.title = `[${bare}] ${m.title}`; }
+      if (m?.version) setLatestKey(`arxiv:${bare}v${m.version}`);
+    });
   }, [target?.id, local]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLocal && !local) {
@@ -138,7 +143,7 @@ function App() {
 
   return (
     <>
-      <PdfViewer url={target.url} paperKey={target.paperKey} localName={isLocal ? local.name : null}
+      <PdfViewer url={target.url} paperKey={target.paperKey} latestKey={latestKey} localName={isLocal ? local.name : null}
         title={title || (isLocal ? local.name : null)} session={session}
         onLogin={() => setLoginOpen(true)} initialPanel={initialPanel} />
       {loginOpen && !session && (
