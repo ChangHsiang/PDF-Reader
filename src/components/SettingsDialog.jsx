@@ -5,6 +5,7 @@ import { viaCustom, LANGS } from "../lib/translate";
 import { useUpdate, openTab, openExtensionsPage } from "../lib/update";
 import { exportBackup, importBackup, currentStats } from "../lib/backup";
 import { GOOGLE_CLIENT_ID } from "../lib/config";
+import OpenPdfToggles from "./OpenPdfToggles";
 
 /**
  * 阅读器顶栏「设置」：阅读 + 翻译两组。
@@ -128,13 +129,6 @@ export default function SettingsDialog({ onClose }) {
     } catch (e) { setTest({ ok: false, msg: e.message }); }
   };
 
-  /* 其他网站的 PDF 也接管：要先拿到「访问所有网站」的权限（可选权限，必须在点击里申请）；不给就不打开 */
-  const toggleAll = async () => {
-    if (s.interceptAll) { setSettings({ interceptAll: false }); return; }
-    const ok = await chrome.permissions.request({ origins: ["https://*/*", "http://*/*"] }).catch(() => false);
-    if (ok) setSettings({ interceptAll: true });
-  };
-
   const field = "w-full h-8 px-2.5 rounded-md bg-[#00000059] border border-[#ffffff33] text-[12.5px] text-[#fff] font-sans " +
                 "outline-none placeholder:text-[#ffffff4d] focus:border-[#ffffff80]";
   const btn = "h-8 px-3.5 rounded-full text-[12.5px] font-sans border-none cursor-pointer whitespace-nowrap";
@@ -155,14 +149,7 @@ export default function SettingsDialog({ onClose }) {
 
         <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar px-5 py-2">
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-2">阅读</div>
-          <Row title="打开 PDF 时用笔记阅读器" desc="关掉后用浏览器自带的阅读器">
-            <Switch on={s.intercept} onClick={() => setSettings({ intercept: !s.intercept })} />
-          </Row>
-          {s.intercept && (
-            <Row title="其他网站的 PDF 也用" desc="默认只接管 arXiv 和本地文件">
-              <Switch on={!!s.interceptAll} onClick={toggleAll} />
-            </Row>
-          )}
+          <OpenPdfToggles Switch={Switch} />
           <div className="py-2.5">
             <div className="text-[13px] text-[#f2f2f2]">页面颜色</div>
             <div className="text-[11.5px] text-[#9a9a9a] leading-snug mt-0.5 mb-2">把白底换成护眼色</div>

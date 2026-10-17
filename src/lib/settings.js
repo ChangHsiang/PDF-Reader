@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
  * 插件设置，存 chrome.storage.local 的 `settings` 键（弹窗、阅读器、background 共用；
  * background 只看 intercept）。
  *
- * - intercept：打开 arXiv PDF / 本地 PDF 时换成插件阅读器
- * - interceptAll：其他网站的 PDF 也换（要「访问所有网站」的可选权限，打开开关时申请；background 按响应的 Content-Type 认）
+ * - interceptOnline：在线 PDF 换成插件阅读器（arXiv 靠重定向规则；其他网站要「访问所有网站」的可选权限，background 按响应头认）
+ * - interceptLocal：本地 PDF（file://）换成插件阅读器（要「允许访问文件网址」）
+ *   （以前是一个 intercept 管 arXiv + 本地，再加 interceptAll 管其他网站；读的时候从 intercept 迁过来）
  * - eqCopy：公式编号旁显示「复制 LaTeX」按钮
  * - syncArxiv / syncLocal：笔记和 ResearchHub 同步的方式，arXiv 论文 / 本地文件分开设：auto 自动 / manual 手动
  *   （本地文件默认手动：本地文件可能是未发表的稿子，不该一打开就往外传）
@@ -20,8 +21,8 @@ import { useEffect, useState } from "react";
  */
 
 export const DEFAULT_SETTINGS = {
-  intercept: true,
-  interceptAll: false,
+  interceptOnline: true,
+  interceptLocal: true,
   eqCopy: true,
   showLinks: false,
   showAnnots: true,
@@ -48,6 +49,10 @@ export async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
   const s = { ...DEFAULT_SETTINGS, ...(settings || {}),
               customApi: { ...DEFAULT_SETTINGS.customApi, ...(settings?.customApi || {}) } };
+  // 以前的 intercept（arXiv + 本地一个开关）拆成在线 / 本地两个
+  if (settings?.interceptOnline === undefined && settings?.intercept === false) s.interceptOnline = false;
+  if (settings?.interceptLocal === undefined && settings?.intercept === false) s.interceptLocal = false;
+  delete s.intercept; delete s.interceptAll;
   // 以前有「自动」目标语言、「默认」/ 网站 DeepSeek 翻译服务，存过的换成现在的默认值
   if (s.translateTarget === "auto") s.translateTarget = DEFAULT_SETTINGS.translateTarget;
   if (s.translateEngine === "auto" || s.translateEngine === "site") s.translateEngine = DEFAULT_SETTINGS.translateEngine;

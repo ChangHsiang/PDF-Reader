@@ -8,6 +8,14 @@ import { signOut } from "../lib/session";
 import { listLibrary, syncAll } from "../lib/notes";
 import { SITE_URL, profileUrl } from "../lib/config";
 import { fileNameOf } from "../lib/localPdf";
+import OpenPdfToggles from "../components/OpenPdfToggles";
+
+const Switch = ({ on, onClick }) => (
+  <button onClick={onClick} role="switch" aria-checked={on}
+    className={`relative w-9 h-5 rounded-full border-none cursor-pointer transition-colors shrink-0 ${on ? "bg-[#7ec8e3]" : "bg-[#ffffff33]"}`}>
+    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-[#fff] transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
+  </button>
+);
 
 /** 工具栏弹窗：账号、是否接管 arXiv PDF、我的笔记列表 */
 
@@ -17,27 +25,15 @@ function Popup() {
   const session = useSession();
   const uid = session?.uid || null;
   const [lib, setLib] = useState(null);
-  const [intercept, setIntercept] = useState(true);
   const [sync, setSync] = useState({ busy: false, msg: "" });
   const [loginOpen, setLoginOpen] = useState(false);
   const [signOutArmed, setSignOutArmed] = useState(false);
   useEffect(() => { if (!signOutArmed) return; const t = setTimeout(() => setSignOutArmed(false), 3000); return () => clearTimeout(t); }, [signOutArmed]);
   // 插件能不能读本地文件（扩展管理页的「允许访问文件网址」）：不能的话提示一句怎么开
-  const [fileAccess, setFileAccess] = useState(true);
-  useEffect(() => { chrome.extension?.isAllowedFileSchemeAccess?.(setFileAccess); }, []);
 
   const refresh = useCallback(() => { listLibrary(uid).then(setLib); }, [uid]);
   useEffect(() => { if (session !== undefined) refresh(); }, [session, refresh]);
-  useEffect(() => {
-    chrome.storage.local.get("settings").then(({ settings }) => setIntercept(settings?.intercept !== false));
-  }, []);
 
-  const toggleIntercept = async () => {
-    const next = !intercept;
-    setIntercept(next);
-    const { settings } = await chrome.storage.local.get("settings");
-    await chrome.storage.local.set({ settings: { ...(settings || {}), intercept: next } });
-  };
 
   const doSync = async () => {
     setSync({ busy: true, msg: "" });
@@ -85,15 +81,7 @@ function Popup() {
       </div>
 
       <div className="shrink-0 px-4 py-2.5 border-b border-[#00000059] flex flex-col gap-2">
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <span className="flex-1 text-[12.5px]">打开 arXiv / 本地 PDF 时用笔记阅读器</span>
-          {/* 只有两个值 ⇒ 开关，点一下就翻 */}
-          <button onClick={toggleIntercept} role="switch" aria-checked={intercept}
-            className={`relative w-9 h-5 rounded-full border-none cursor-pointer transition-colors shrink-0
-              ${intercept ? "bg-[#7ec8e3]" : "bg-[#ffffff33]"}`}>
-            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-[#fff] transition-all ${intercept ? "left-[18px]" : "left-0.5"}`} />
-          </button>
-        </label>
+        <div className="flex flex-col"><OpenPdfToggles Switch={Switch} compact /></div>
         {uid && (
           <div className="flex items-center gap-2">
             <span className={`flex-1 text-[11.5px] ${sync.msg && sync.msg !== "已同步" ? "text-[#ff9a9a]" : "text-[#9a9a9a]"}`}>
@@ -108,14 +96,6 @@ function Popup() {
         )}
       </div>
 
-      {!fileAccess && (
-        <div className="mx-4 mt-2.5 px-2.5 py-2 rounded-md bg-[#ffffff0d] text-[11.5px] leading-relaxed text-[#9a9a9a]">
-          想用它打开本地 PDF？在
-          <button onClick={() => chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` })}
-            className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[11.5px]">扩展管理页</button>
-          打开 PDF-Reader 的「允许访问文件网址」，之后双击 / 拖进浏览器的 PDF 都会用它打开。
-        </div>
-      )}
       <div className="px-4 pt-2.5 pb-1 text-[11.5px] text-[#9a9a9a] font-bold">我的笔记</div>
       <div className="flex-1 overflow-y-auto thin-scrollbar px-2 pb-2 min-h-[80px]">
         {lib === null ? null : lib.length === 0 ? (

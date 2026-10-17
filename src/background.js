@@ -23,7 +23,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
   const u = info.url;
   if (!u || !/^file:\/\/.+\.pdf(?:[?#].*)?$/i.test(u)) return;
   if (rawFileTabs.has(tabId)) { rawFileTabs.delete(tabId); return; }
-  if (!(await getSettings()).intercept) return;
+  if (!(await getSettings()).interceptLocal) return;
   chrome.tabs.update(tabId, { url: `${VIEWER}?url=${encodeURIComponent(u)}` }).catch(() => {});
 });
 
@@ -40,7 +40,7 @@ chrome.webRequest?.onHeadersReceived.addListener((d) => {
   if (!isPdf || /attachment/i.test(h("content-disposition"))) return;
   if (rawWebTabs.has(d.tabId)) { rawWebTabs.delete(d.tabId); return; }
   getSettings().then((st) => {
-    if (!st.intercept || !st.interceptAll) return;
+    if (!st.interceptOnline) return;
     chrome.tabs.update(d.tabId, { url: `${VIEWER}?url=${encodeURIComponent(d.url)}` }).catch(() => {});
   });
 }, { urls: ["http://*/*", "https://*/*"], types: ["main_frame"] }, ["responseHeaders"]);
@@ -53,7 +53,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
-  return { intercept: true, ...(settings || {}) };
+  // 在线 / 本地两个开关；老的 intercept（一个开关管两样）迁过来（同 lib/settings 的 getSettings，这里不能引带 React 的那个文件）
+  const old = settings?.intercept !== false;
+  return { ...(settings || {}), interceptOnline: settings?.interceptOnline ?? old, interceptLocal: settings?.interceptLocal ?? old };
 }
 
 /* 重定向规则用动态规则：静态规则的 regexSubstitution 里写不了扩展自己的 id。
@@ -63,8 +65,8 @@ async function getSettings() {
    arXiv 会 301 到去掉查询串的地址，第二跳又被拦回来。改成给**那个标签页**
    加一条会话级放行规则（见 viewer:raw），标签页关了就删 */
 async function applyRules() {
-  const { intercept } = await getSettings();
-  const addRules = intercept ? [
+  const { interceptOnline } = await getSettings();
+  const addRules = interceptOnline ? [
     {
       id: RULE_REDIRECT, priority: 1,
       action: { type: "redirect", redirect: { regexSubstitution: `${VIEWER}?url=\\0` } },
