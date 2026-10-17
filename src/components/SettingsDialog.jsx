@@ -13,6 +13,8 @@ import OpenPdfToggles from "./OpenPdfToggles";
  * （manifest 里是 optional_host_permissions，用到哪个才申请哪个，不在安装时就要「所有网站」）。
  */
 
+const TABS = [["read", "阅读"], ["trans", "翻译"], ["sync", "同步"], ["data", "数据"], ["about", "版本"]];
+
 const Switch = ({ on, onClick }) => (
   <button onClick={onClick} role="switch" aria-checked={on}
     className={`relative w-9 h-5 rounded-full border-none cursor-pointer transition-colors shrink-0 ${on ? "bg-[#7ec8e3]" : "bg-[#ffffff33]"}`}>
@@ -129,6 +131,13 @@ export default function SettingsDialog({ onClose }) {
     } catch (e) { setTest({ ok: false, msg: e.message }); }
   };
 
+  const [tab, setTab] = useState(() => {
+    try { const t = localStorage.getItem("rh_settings_tab"); if (TABS.some(x => x[0] === t)) return t; } catch { /* 读不了就默认 */ }
+    return "read";
+  });
+  const pickTab = (k) => { setTab(k); try { localStorage.setItem("rh_settings_tab", k); } catch { /* 存不了不要紧 */ } };
+  const upd = useUpdate();
+
   const field = "w-full h-8 px-2.5 rounded-md bg-[#00000059] border border-[#ffffff33] text-[12.5px] text-[#fff] font-sans " +
                 "outline-none placeholder:text-[#ffffff4d] focus:border-[#ffffff80]";
   const btn = "h-8 px-3.5 rounded-full text-[12.5px] font-sans border-none cursor-pointer whitespace-nowrap";
@@ -137,7 +146,7 @@ export default function SettingsDialog({ onClose }) {
     <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4 animate-fade-in font-sans"
       onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       {/* 标题栏固定在上面，只有下面的内容滚动 */}
-      <div className="w-full max-w-[480px] max-h-[90vh] flex flex-col overflow-hidden rounded-xl bg-[#323639]
+      <div className="w-full max-w-[680px] h-[min(560px,90vh)] flex flex-col overflow-hidden rounded-xl bg-[#323639]
                       border border-[#ffffff26] shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
         <div className="relative h-12 shrink-0 flex items-center justify-center border-b border-[#00000040]">
           <span className="text-[14.5px] text-[#fff] font-bold">设置</span>
@@ -147,8 +156,21 @@ export default function SettingsDialog({ onClose }) {
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar px-5 py-2">
-          <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-2">阅读</div>
+        <div className="flex-1 min-h-0 flex">
+        {/* 左栏导航，右栏只放当前这一项（一长条往下滚太长了）。记住上次看的是哪一项 */}
+        <nav className="w-[132px] shrink-0 p-2 border-r border-[#00000040] flex flex-col gap-0.5">
+          {TABS.map(([k, label]) => (
+            <button key={k} onClick={() => pickTab(k)}
+              className={`relative h-8 px-3 rounded-md text-left text-[13px] border-none cursor-pointer
+                ${tab === k ? "bg-[#7ec8e31f] text-[#7ec8e3] font-bold" : "bg-transparent text-[#d0d0d0] hover:bg-[#ffffff12]"}`}>
+              {label}
+              {k === "about" && upd.show && <span className="absolute top-1/2 -translate-y-1/2 right-2.5 w-2 h-2 rounded-full bg-[#ff5c5c]" />}
+            </button>
+          ))}
+        </nav>
+        <div className="flex-1 min-w-0 overflow-y-auto thin-scrollbar px-5 py-2">
+          <div className="text-[14px] text-[#fff] font-bold pt-2 pb-1">{TABS.find(t => t[0] === tab)?.[1]}</div>
+          {tab === "read" && (<>
           <OpenPdfToggles Switch={Switch} />
           <div className="py-2.5">
             <div className="text-[13px] text-[#f2f2f2]">页面颜色</div>
@@ -174,7 +196,8 @@ export default function SettingsDialog({ onClose }) {
             <Switch on={s.showLinks} onClick={() => setSettings({ showLinks: !s.showLinks })} />
           </Row>
 
-          <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">翻译</div>
+          </>)}
+          {tab === "trans" && (<>
           <Row title="选中文字后直接翻译" desc="选中后直接弹出译文">
             <Switch on={s.autoTranslate} onClick={() => setSettings({ autoTranslate: !s.autoTranslate })} />
           </Row>
@@ -227,7 +250,8 @@ export default function SettingsDialog({ onClose }) {
             </div>
           )}
 
-          <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">同步</div>
+          </>)}
+          {tab === "sync" && (<>
           <Row title="在线论文的笔记" desc="自动：改完就同步；手动：点顶栏的同步按钮">
             <Dropdown value={s.syncArxiv || "auto"} onChange={v => setSettings({ syncArxiv: v })}
               options={[["auto", "自动同步"], ["manual", "手动同步"]]} />
@@ -237,11 +261,15 @@ export default function SettingsDialog({ onClose }) {
               options={[["auto", "自动同步"], ["manual", "手动同步"]]} />
           </Row>
 
-          <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">数据</div>
+          </>)}
+          {tab === "data" && (<>
           <DataSection btn={btn} />
 
-          <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">版本</div>
+          </>)}
+          {tab === "about" && (<>
           <VersionSection btn={btn} />
+          </>)}
+        </div>
         </div>
       </div>
     </div>,
