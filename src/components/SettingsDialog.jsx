@@ -391,10 +391,17 @@ function DriveBackup({ btn, onRestored }) {
   const send = (type, extra) => chrome.runtime.sendMessage({ type, ...extra });
   const ghost = `${btn} text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a] disabled:opacity-50`;
   const small = "h-7 px-2.5 rounded-full text-[11.5px] font-sans border cursor-pointer whitespace-nowrap bg-transparent disabled:opacity-50";
-  const fail = (r) => { if (r?.error || r?.ok === false) { setMsg({ ok: false, text: r?.error || "失败了" }); return true; } return false; };
+  /* 后台没回话（r 是 undefined）多半是插件更新后后台还是旧的、不认识这个消息：提示去扩展管理页点刷新。
+     以前直接读 r.items 抛错，列表就一直停在「正在读取…」（踩过） */
+  const fail = (r) => {
+    if (r === undefined || r === null) { setMsg({ ok: false, text: "插件后台没有响应：请到扩展管理页点一下这个插件的刷新按钮" }); return true; }
+    if (r.error || r.ok === false) { setMsg({ ok: false, text: r.error || "失败了" }); return true; }
+    return false;
+  };
   const loadList = async () => {
     const r = await send("gdrive:list").catch((e) => ({ ok: false, error: e.message }));
-    if (!fail(r)) setItems(r.items || []);
+    if (fail(r)) { setItems([]); return; }
+    setItems(r.items || []);
   };
   const connected = !!g?.email && !g?.needAuth;
   useEffect(() => { if (connected && items === null) loadList(); }, [connected]);   // eslint-disable-line react-hooks/exhaustive-deps
