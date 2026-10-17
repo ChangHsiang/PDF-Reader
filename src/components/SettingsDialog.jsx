@@ -458,7 +458,13 @@ function DriveBackup({ btn, onRestored }) {
     <div className={box}>
       <div className="flex items-center gap-2">
         <span className="flex-1 min-w-0 truncate text-[#e6e6e6]">备份到 Google 云端硬盘 · <span className="text-[#9a9a9a]">{g.email}</span></span>
-        <button onClick={() => { send("gdrive:disconnect"); setItems(null); }} className={ghost}>断开</button>
+        {/* 断开（解除关联的链子图标）：云端的备份不会删，重新连接就回来 */}
+        <button onClick={() => { send("gdrive:disconnect"); setItems(null); }} title="断开 Google 账号"
+          className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center border-none cursor-pointer bg-transparent text-[#c0c0c0] hover:text-[#fff] hover:bg-[#ffffff1a]">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 17H7a5 5 0 0 1 0-10h2" /><path d="M15 7h2a5 5 0 0 1 4 8" /><line x1="8" y1="12" x2="11" y2="12" /><line x1="3" y1="3" x2="21" y2="21" />
+          </svg>
+        </button>
       </div>
       {g.needAuth ? (
         <div className="flex items-center gap-2 text-[12px] text-[#ffb36b]">
