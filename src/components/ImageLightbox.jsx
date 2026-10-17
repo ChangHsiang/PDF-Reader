@@ -557,7 +557,7 @@ export default function ImageLightbox({ images: figures, index, onIndex, onClose
           <div className="flex flex-col items-center justify-start gap-2 w-[132px] shrink-0 pb-2 px-2
                           border-r border-[#ffffff33]" onClick={e => e.stopPropagation()}>
             <LbBtn label="上一批" onClick={() => scrollRail(-1)}><Chevron dir="up" size={18} /></LbBtn>
-            <div ref={railRef} className="flex-1 min-h-0 w-full overflow-y-auto no-scrollbar flex flex-col gap-2">
+            <div ref={railRef} className="flex-1 min-h-0 w-full overflow-y-auto thin-scrollbar flex flex-col gap-2">
               {figures.map((g, i) => (
                 <button key={g.key || i} onClick={() => jump(i)} aria-label={`第 ${i + 1} 张`}
                   style={{ height: thumbH }}
