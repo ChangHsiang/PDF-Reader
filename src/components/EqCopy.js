@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { pageCanvasBox } from "../lib/pdfAnchor";
+import { clientRectToNorm } from "../lib/pdfium/rotate";
 import { equationsFor, normLabel, sourceSize } from "../lib/latexSource";
 
 /**
@@ -88,23 +89,28 @@ export function useEquationCopy(viewerElRef, apiRef, ready, arxivId, enabled) {
       if (!cands) {
         if (!tl?.querySelector("span")) { layer?.remove(); return; }   // 文字层还没出来，等 textlayerrendered
         const box = pageCanvasBox(pageEl);
+        // 都换成页面方向的比例坐标再比（转过的页也对，见 lib/pdfium/rotate.js）；x 方向的阈值按页宽算
         const spans = [...tl.querySelectorAll("span")]
           .filter(s => !s.children.length && s.textContent.trim())
-          .map(s => ({ t: s.textContent.trim(), r: s.getBoundingClientRect() }));
+          .map(s => { const n = clientRectToNorm(pageEl, s.getBoundingClientRect(), box); return { t: s.textContent.trim(), r: { left: n.x, right: n.x + n.w, top: n.y, bottom: n.y + n.h } }; });
         cands = [];
         for (const c of spans) {
           const m = NUM_RE.exec(c.t);
           if (!m) continue;
-          const cy = c.r.top + c.r.height / 2;
-          let left = -Infinity;
+          const cy = (c.r.top + c.r.bottom) / 2;
+          let left = -Infinity, right = Infinity;
           for (const o of spans) {
-            if (o === c || o.r.top > cy || o.r.bottom < cy || o.r.right > c.r.left + 1) continue;
-            left = Math.max(left, o.r.right);
+            if (o === c || o.r.top > cy || o.r.bottom < cy) continue;
+            if (o.r.right <= c.r.left + 0.001) left = Math.max(left, o.r.right);
+            else if (o.r.left >= c.r.right - 0.001) right = Math.min(right, o.r.left);
           }
           /* 紧挨着字 = 正文里的引用（「Eq. (3)」之间只隔一个空格，2~4px）。阈值别定太大：
              长公式会一直写到编号跟前，实测只剩 16~21px（页宽 816 时），3% 就漏掉了 */
-          if (left !== -Infinity && c.r.left - left < box.width * 0.012) continue;
-          cands.push({ label: normLabel(m[1]), x: (c.r.right - box.left) / box.width, y: (cy - box.top) / box.height });
+          if (left !== -Infinity && c.r.left - left < 0.012) continue;
+          /* 右边紧跟着字 = 也是正文里的引用：折行时「(23) for more…」会排到行首，左边空着（踩过）。
+             真的公式编号右对齐在栏边，右边要么没字、要么隔着栏间距到了另一栏 */
+          if (right !== Infinity && right - c.r.right < 0.015) continue;
+          cands.push({ label: normLabel(m[1]), x: c.r.right, y: cy });
         }
         candCache.set(n, cands);
       }
