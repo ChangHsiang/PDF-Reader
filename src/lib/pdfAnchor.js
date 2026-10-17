@@ -45,8 +45,8 @@ export const commentKeyOf = (paperKey) => {
 
 /** 'arxiv:2301.12345v2' → { base:'arxiv:2301.12345', version:2 }；没版本号 version 为 null */
 export function splitPaperKey(key) {
-  // 本地文件（file:…）没有版本号，整个就是 base
-  if (/^file:/.test(key || "")) return { base: key, version: null };
+  // 本地文件（file:…）、按 DOI 认的（doi:…）没有版本号，整个就是 base
+  if (/^(file|doi):/.test(key || "")) return { base: key, version: null };
   const m = /^(.*?)v(\d+)$/.exec(key || "");
   return m ? { base: m[1], version: Number(m[2]) } : { base: key || "", version: null };
 }

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
  * 插件设置，存 chrome.storage.local 的 `settings` 键（弹窗、阅读器、background 共用；
  * background 只看 intercept）。
  *
- * - intercept：打开 arXiv PDF 时换成插件阅读器
+ * - intercept：打开 arXiv PDF / 本地 PDF 时换成插件阅读器
+ * - interceptAll：其他网站的 PDF 也换（要「访问所有网站」的可选权限，打开开关时申请；background 按响应的 Content-Type 认）
  * - eqCopy：公式编号旁显示「复制 LaTeX」按钮
  * - syncArxiv / syncLocal：笔记和 ResearchHub 同步的方式，arXiv 论文 / 本地文件分开设：auto 自动 / manual 手动
  *   （本地文件默认手动：本地文件可能是未发表的稿子，不该一打开就往外传）
@@ -20,6 +21,7 @@ import { useEffect, useState } from "react";
 
 export const DEFAULT_SETTINGS = {
   intercept: true,
+  interceptAll: false,
   eqCopy: true,
   showLinks: false,
   showAnnots: true,

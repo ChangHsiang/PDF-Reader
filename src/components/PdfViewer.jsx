@@ -28,6 +28,7 @@ import { useSettings, setSettings } from "../lib/settings";
 import { useEquationCopy } from "./EqCopy";
 import { extractReferences, citeGroup, citeGroupRect, destKey, paperCard } from "../lib/refs";
 import { citeData } from "../lib/cite";
+import { takePrefetched } from "../lib/localPdf";
 import { findBookmark, saveBookmark, removeBookmark, listCollections } from "../lib/library";
 import { sharedPdfium } from "../lib/pdfium/client";
 import { toPdfAnnotations } from "../lib/exportPdf";
@@ -500,9 +501,13 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
         // presetValue：page-width / page-fit 这类「自动」倍数时有值，下拉菜单靠它打勾
         eventBus.on("scalechanging", (e) => { if (alive) { setZoom(e.scale); setScaleMode(e.presetValue || null); } });
 
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`下载 PDF 失败（${res.status}）`);
-        const buf = await res.arrayBuffer();
+        // 本地 / 其他网站的 PDF 在认身份时已经下过一遍（lib/localPdf），直接用
+        let buf = takePrefetched(url);
+        if (!buf) {
+          const res = await fetch(url, /^https?:/.test(url) && !/arxiv\.org\//.test(url) ? { credentials: "include" } : undefined);
+          if (!res.ok) throw new Error(`下载 PDF 失败（${res.status}）`);
+          buf = await res.arrayBuffer();
+        }
         const bytes = new Uint8Array(buf.slice(0));       // 留一份原始字节给「下载」用（buf 会被转交给 Worker）
         const docId = `d${++docSeq}`;
         const info = await pdf.open(docId, buf);
@@ -644,6 +649,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     if (!arxivKey) meta = await doc.props?.().catch(() => ({})) || {};
     return paperCard({
       arxivBase: arxivKey ? arxivKey.replace(/v\d+$/, "") : null,
+      doi: /^doi:/.test(paperKey) ? paperKey.slice(4) : null,
       title: meta.Title || title || (localName || "").replace(/\.pdf$/i, ""), author: meta.Author,
     });
   };

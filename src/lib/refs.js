@@ -369,8 +369,8 @@ async function fromCrossref(text) {
  * 本地文件（不是 arXiv 的）：按 PDF 里的标题 / 作者问 Crossref，标题对得上才算；查不到就没有（不拿元数据瞎凑）
  */
 const selfCache = new Map();
-export function paperCard({ arxivBase, title, author }) {
-  const key = arxivBase || `t:${title}`;
+export function paperCard({ arxivBase, doi, title, author }) {
+  const key = arxivBase || (doi ? `doi:${doi}` : `t:${title}`);
   if (!selfCache.has(key)) {
     const job = (async () => {
       if (arxivBase) {
@@ -378,6 +378,7 @@ export function paperCard({ arxivBase, title, author }) {
         const recid = d?.hits?.hits?.[0]?.metadata?.control_number;
         return (recid && await fromInspireRecord(recid)) || await fromS2(`arXiv:${arxivBase}`);
       }
+      if (doi) { const c = await fromS2(`DOI:${doi}`); if (c) return c; }
       if (!title) return null;
       const viaCr = await fromCrossref([author, title].filter(Boolean).join(" "));
       return viaCr && normT(viaCr.title) === normT(title) ? viaCr : null;

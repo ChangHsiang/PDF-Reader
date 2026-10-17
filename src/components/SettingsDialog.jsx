@@ -128,6 +128,13 @@ export default function SettingsDialog({ onClose }) {
     } catch (e) { setTest({ ok: false, msg: e.message }); }
   };
 
+  /* 其他网站的 PDF 也接管：要先拿到「访问所有网站」的权限（可选权限，必须在点击里申请）；不给就不打开 */
+  const toggleAll = async () => {
+    if (s.interceptAll) { setSettings({ interceptAll: false }); return; }
+    const ok = await chrome.permissions.request({ origins: ["https://*/*", "http://*/*"] }).catch(() => false);
+    if (ok) setSettings({ interceptAll: true });
+  };
+
   const field = "w-full h-8 px-2.5 rounded-md bg-[#00000059] border border-[#ffffff33] text-[12.5px] text-[#fff] font-sans " +
                 "outline-none placeholder:text-[#ffffff4d] focus:border-[#ffffff80]";
   const btn = "h-8 px-3.5 rounded-full text-[12.5px] font-sans border-none cursor-pointer whitespace-nowrap";
@@ -148,12 +155,17 @@ export default function SettingsDialog({ onClose }) {
 
         <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar px-5 py-2">
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-2">阅读</div>
-          <Row title="打开 PDF 时用笔记阅读器" desc="arXiv 论文和本地 PDF 文件（本地文件要在扩展管理页打开「允许访问文件网址」）。关掉后用浏览器自带的阅读器打开">
+          <Row title="打开 PDF 时用笔记阅读器" desc="关掉后用浏览器自带的阅读器">
             <Switch on={s.intercept} onClick={() => setSettings({ intercept: !s.intercept })} />
           </Row>
+          {s.intercept && (
+            <Row title="其他网站的 PDF 也用" desc="默认只接管 arXiv 和本地文件">
+              <Switch on={!!s.interceptAll} onClick={toggleAll} />
+            </Row>
+          )}
           <div className="py-2.5">
             <div className="text-[13px] text-[#f2f2f2]">页面颜色</div>
-            <div className="text-[11.5px] text-[#9a9a9a] leading-snug mt-0.5 mb-2">护眼：把 PDF 的白底换成别的颜色，文字和标注不受影响。夜间模式下图片的颜色会反过来</div>
+            <div className="text-[11.5px] text-[#9a9a9a] leading-snug mt-0.5 mb-2">把白底换成护眼色</div>
             <div className="flex gap-2">
               {PAPERS.map(p => (
                 <button key={p.key} onClick={() => setSettings({ paper: p.key })} title={p.label}
@@ -168,15 +180,15 @@ export default function SettingsDialog({ onClose }) {
               ))}
             </div>
           </div>
-          <Row title="公式旁显示「复制 LaTeX」按钮" desc="带编号的公式左边一颗小按钮，复制的是 arXiv 源码里的 LaTeX（作者自定义的宏已展开）">
+          <Row title="公式旁显示「复制 LaTeX」按钮" desc="仅 arXiv 论文">
             <Switch on={s.eqCopy} onClick={() => setSettings({ eqCopy: !s.eqCopy })} />
           </Row>
-          <Row title="标出所有链接" desc="有的论文只给文献引用上色，公式 / 图 / 章节的引用看不出是链接。打开后所有链接下面画一道淡色虚线">
+          <Row title="标出所有链接" desc="所有链接下面画一道虚线">
             <Switch on={s.showLinks} onClick={() => setSettings({ showLinks: !s.showLinks })} />
           </Row>
 
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">翻译</div>
-          <Row title="选中文字后直接翻译" desc="不用再点工具条上的「翻译」，选完就在下面弹出译文">
+          <Row title="选中文字后直接翻译" desc="选中后直接弹出译文">
             <Switch on={s.autoTranslate} onClick={() => setSettings({ autoTranslate: !s.autoTranslate })} />
           </Row>
           <Row title="译成">
@@ -191,7 +203,7 @@ export default function SettingsDialog({ onClose }) {
             <div className="text-[11.5px] text-[#9a9a9a] leading-snug -mt-1">
               {s.translateEngine === "google" && "Google 翻译的公开接口，不用配置。"}
               {s.translateEngine === "bing" && "必应翻译的网页接口，不用配置。"}
-              {s.translateEngine === "custom" && "兼容 OpenAI 接口格式的服务都可以：DeepSeek、OpenAI、通义千问、Kimi、本地部署的模型等。Key 只保存在这台电脑的浏览器里。"}
+              {s.translateEngine === "custom" && "兼容 OpenAI 格式的服务（DeepSeek、通义、Kimi 等），Key 只存在本机。"}
             </div>
           </div>
 
@@ -229,11 +241,11 @@ export default function SettingsDialog({ onClose }) {
           )}
 
           <div className="text-[11.5px] text-[#7ec8e3] font-bold pt-3 border-t border-[#ffffff14] mt-1">同步</div>
-          <Row title="arXiv 论文的笔记" desc="登录 ResearchHub 后和网站同步。自动：打开论文、改完笔记就同步；手动：点顶栏的同步按钮才同步">
+          <Row title="在线论文的笔记" desc="自动：改完就同步；手动：点顶栏的同步按钮">
             <Dropdown value={s.syncArxiv || "auto"} onChange={v => setSettings({ syncArxiv: v })}
               options={[["auto", "自动同步"], ["manual", "手动同步"]]} />
           </Row>
-          <Row title="本地文件的笔记" desc="本地文件可能是没发表的稿子，默认手动。同步只传笔记，不传 PDF；默认只有自己看得到">
+          <Row title="本地文件的笔记" desc="默认手动；只同步笔记，不传 PDF">
             <Dropdown value={s.syncLocal || "manual"} onChange={v => setSettings({ syncLocal: v })}
               options={[["auto", "自动同步"], ["manual", "手动同步"]]} />
           </Row>
@@ -291,10 +303,9 @@ function VersionSection({ btn }) {
               : <button onClick={u.ignore} className={ghost}>忽略此版本</button>}
           </div>
           <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
-            升级：先在上面「数据」里导出一份备份；下载后解压，把里面的文件覆盖到原来加载插件的那个文件夹，再到
+            升级：解压后覆盖原来的文件夹，再到
             <button onClick={openExtensionsPage} className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[11.5px]">扩展管理页</button>
-            点这个插件卡片上的刷新按钮。
-            <b className="text-[#ffb36b] font-bold">不要点「移除」</b>：移除会让浏览器删掉所有笔记。
+            点刷新。<b className="text-[#ffb36b] font-bold">不要点「移除」</b>，会删掉所有笔记。
           </div>
         </div>
       )}
@@ -332,8 +343,7 @@ function DataSection({ btn }) {
         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={doImport} />
       </div>
       <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
-        笔记和标注都存在这个浏览器里。<b className="text-[#ffb36b] font-bold">在扩展管理页「移除」插件会把它们全部删掉</b>
-        （升级只要覆盖文件再点刷新，不会动数据）。重装、换电脑之前先导出备份，装好后导入。备份里不含登录信息和翻译接口的 Key。
+        笔记存在这个浏览器里，<b className="text-[#ffb36b] font-bold">「移除」插件会全部删掉</b>。重装、换电脑前先导出备份。
       </div>
       {msg && (
         <div className={`text-[12px] leading-relaxed rounded-md px-2.5 py-2 ${msg.ok ? "text-[#7ee3a0] bg-[#7ee3a014]" : "text-[#ff9a9a] bg-[#ff9a9a14]"}`}>
@@ -393,8 +403,7 @@ function DriveBackup({ btn, onRestored }) {
           </button>
         </div>
         <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
-          笔记自动备份到你自己的云端硬盘（一个 PDF-Reader-backup.json 文件），换电脑、重装后连上同一个账号就能恢复。
-          插件只能读写它自己建的这个文件，看不到云端硬盘里的其它东西。
+          自动备份到你的云端硬盘，换电脑后连上同一账号就能恢复。插件只能访问它自己建的备份文件。
         </div>
         {msg && <div className={`text-[12px] ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
       </div>

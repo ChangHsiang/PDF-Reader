@@ -27,7 +27,26 @@ chrome.tabs.onUpdated.addListener(async (tabId, info) => {
   chrome.tabs.update(tabId, { url: `${VIEWER}?url=${encodeURIComponent(u)}` }).catch(() => {});
 });
 
+/* 其他网站的 PDF（设置「其他网站的 PDF 也用」，要可选权限「访问所有网站」）：declarativeNetRequest 只能按网址拦，
+   期刊的 PDF 地址多半不以 .pdf 结尾 —— 看响应头：主框架、2xx、Content-Type 是 PDF、不是「下载附件」，就把这个标签转到阅读器。
+   webRequest 只观察不拦（MV3 不让阻塞），浏览器自带阅读器会先闪一下。没给权限时这个事件根本不会触发。
+   arXiv 归上面的重定向规则管；「用浏览器自带阅读器打开」的标签放行一次（rawWebTabs） */
+const rawWebTabs = new Set();
+chrome.webRequest?.onHeadersReceived.addListener((d) => {
+  if (d.tabId < 0 || d.statusCode < 200 || d.statusCode >= 300 || /^https?:\/\/([a-z]+\.)?arxiv\.org\//i.test(d.url)) return;
+  const h = (n) => d.responseHeaders?.find(x => x.name.toLowerCase() === n)?.value || "";
+  const type = h("content-type").toLowerCase();
+  const isPdf = type.includes("application/pdf") || (type.includes("octet-stream") && /\.pdf(?:[?#]|$)/i.test(d.url));
+  if (!isPdf || /attachment/i.test(h("content-disposition"))) return;
+  if (rawWebTabs.has(d.tabId)) { rawWebTabs.delete(d.tabId); return; }
+  getSettings().then((st) => {
+    if (!st.intercept || !st.interceptAll) return;
+    chrome.tabs.update(d.tabId, { url: `${VIEWER}?url=${encodeURIComponent(d.url)}` }).catch(() => {});
+  });
+}, { urls: ["http://*/*", "https://*/*"], types: ["main_frame"] }, ["responseHeaders"]);
+
 chrome.tabs.onRemoved.addListener((tabId) => {
+  rawWebTabs.delete(tabId);
   chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [RAW_BASE + tabId] }).catch(() => {});
   forgetViewerTab(tabId);            // 用户自己关的：不用在更新后重新打开
 });
@@ -92,6 +111,11 @@ const handlers = {
     const tabId = tab.id;
     if (/^file:/i.test(m.url || "")) {                // 本地文件：放行这个标签这一次
       rawFileTabs.add(tabId);
+      await chrome.tabs.update(tabId, { url: m.url });
+      return;
+    }
+    if (!/arxiv\.org\//i.test(m.url || "")) {           // 其他网站的 PDF：放行这个标签一次（见上面的 webRequest）
+      rawWebTabs.add(tabId);
       await chrome.tabs.update(tabId, { url: m.url });
       return;
     }

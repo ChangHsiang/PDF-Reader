@@ -46,6 +46,7 @@ function identityText(paperKey) {
     const m = /^arxiv:(.+?)(?:v(\d+))?$/.exec(paperKey);
     return `arXiv ${m[1]}${m[2] ? ` v${m[2]}` : ""}`;
   }
+  if (/^doi:/.test(paperKey)) return `DOI ${paperKey.slice(4)}`;
   if (/^file:sha256:/.test(paperKey)) return "按文件内容识别（这份 PDF 没有文件编号；内容一改就认不出了）";
   if (/^file:/.test(paperKey)) return "按 PDF 文件编号识别（在别的软件里加标注保存后也认得出）";
   return paperKey || "-";

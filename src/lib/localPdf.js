@@ -11,6 +11,11 @@ import { sharedPdfium } from "./pdfium/client";
  * 3. 没有编号的（少数 PDF）：文件内容的 SHA-256 → `file:sha256:<hex>`（内容一改就算新文件）
  *
  * 要读 file:// 的文件，需要在扩展管理页给插件打开「允许访问文件网址」；没开的话 fetch 会失败，提示用户去开。
+ *
+ * **其他网站的在线 PDF**（设置「其他网站的 PDF 也用」）也走这里，多认一步 **DOI**（PDF 的 Subject / Keywords / 第一页里的
+ * `doi:10.…` / `doi.org/10.…`）→ `doi:<小写 DOI>`：同一篇从期刊官网、学校镜像打开都是同一份笔记。
+ * 优先级：arXiv 印记 > DOI > 永久编号 > 内容哈希；但本机已经有按文件编号 / 哈希存的笔记时，沿用那个（以前没认 DOI 时存的笔记别丢）。
+ * 下载下来的字节留一份（takePrefetched），阅读器打开时直接用，不再下第二遍
  */
 
 export const isLocalPdfUrl = (u) => /^file:\/\/.+\.pdf(?:[?#].*)?$/i.test(String(u || ""));
@@ -27,15 +32,29 @@ const STAMP = /arXiv:\s*((?:\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?\/\d{7})v\d+)\s
 export class FileAccessError extends Error {}
 
 let seq = 0;
-export async function identifyLocalPdf(url) {
+const DOI_RE = /(?:\bdoi\s*[:：]?\s*|doi\.org\/)(10\.\d{4,9}\/[^\s"<>,;]+)/i;
+const prefetched = new Map();
+/** 认文件时下载过的字节（只给一次） */
+export function takePrefetched(url) {
+  const b = prefetched.get(url);
+  prefetched.delete(url);
+  return b || null;
+}
+
+export const identifyLocalPdf = (url) => identifyPdf(url);
+
+/** online：其他网站的 PDF（带上那个网站的登录 cookie 去取，要登录才能下的期刊 PDF 也能读） */
+export async function identifyPdf(url, { online = false } = {}) {
   let buf;
   try {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(String(r.status));
+    const r = await fetch(url, online ? { credentials: "include" } : undefined);
+    if (!r.ok) throw new Error(`下载 PDF 失败（${r.status}）`);
     buf = await r.arrayBuffer();
-  } catch {
+  } catch (e) {
+    if (online) throw new Error(e?.message?.startsWith("下载") ? e.message : "下载 PDF 失败（网络或权限）");
     throw new FileAccessError("读不到这个本地文件");
   }
+  prefetched.set(url, buf.slice(0));
   const name = fileNameOf(url);
   const sha = async () => [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))]
     .map(b => b.toString(16).padStart(2, "0")).join("");
@@ -51,8 +70,13 @@ export async function identifyLocalPdf(url) {
     pdf.close(docId).catch(() => {});
   }
   const arxivId = STAMP.exec(info.firstPage || "")?.[1] || null;
-  const paperKey = arxivId ? `arxiv:${arxivId}`
-    : info.permanentId ? `file:${info.permanentId}`
-    : `file:sha256:${info.hash}`;
-  return { paperKey, arxivId, name, title: info.title || null };
+  const doi = DOI_RE.exec(`${info.subject || ""} ${info.keywords || ""} ${(info.firstPage || "").slice(0, 6000)}`)?.[1]
+    ?.replace(/[.)\]]+$/, "").toLowerCase() || null;
+  const fileKey = info.permanentId ? `file:${info.permanentId}` : `file:sha256:${info.hash}`;
+  let paperKey = arxivId ? `arxiv:${arxivId}` : doi ? `doi:${doi}` : fileKey;
+  if (!arxivId && doi) {
+    const had = await chrome.storage.local.get(`paper:${fileKey}`).catch(() => ({}));
+    if (had[`paper:${fileKey}`]) paperKey = fileKey;           // 以前按文件存过笔记：沿用
+  }
+  return { paperKey, arxivId, doi, name, title: info.title || null };
 }

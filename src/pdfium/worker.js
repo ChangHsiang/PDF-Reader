@@ -244,7 +244,9 @@ const ops = {
       const { codes } = await ops.text({ docId, pageIndex: 0 });
       for (const c of codes) if (c) firstPage += c === 2 ? "-" : String.fromCodePoint(c);
     }
-    return { permanentId: fileId(0), changingId: fileId(1), title: meta("Title"), firstPage: firstPage.slice(0, 20000) };
+    // Subject / Keywords：期刊排版的 PDF 常把「期刊 卷 页 (年). doi:10.…」写在这里（认 DOI 用）
+    return { permanentId: fileId(0), changingId: fileId(1), title: meta("Title"), subject: meta("Subject"), keywords: meta("Keywords"),
+             firstPage: firstPage.slice(0, 20000) };
   },
   /** 文档属性（点阅读器左上角的标题）：信息字典里的几项 + PDF 版本（14 → "1.4"） */
   async props({ docId }) {

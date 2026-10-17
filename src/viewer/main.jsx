@@ -6,7 +6,7 @@ import LoginForm from "../components/LoginForm";
 import { useSession } from "../lib/useSession";
 import { arxivIdFromUrl } from "../lib/pdfAnchor";
 import { registerViewerTab } from "../lib/tabRestore";
-import { isLocalPdfUrl, identifyLocalPdf, fileNameOf, FileAccessError } from "../lib/localPdf";
+import { isLocalPdfUrl, identifyPdf, fileNameOf, FileAccessError } from "../lib/localPdf";
 
 /**
  * 阅读器页面：`viewer.html?url=https://arxiv.org/pdf/2301.12345v2[&panel=comments]`，
@@ -37,7 +37,9 @@ async function fetchTitle(id) {
   } catch { return null; }
 }
 
-const isLocal = isLocalPdfUrl(rawUrl);
+/* 本地文件，或其他网站的 PDF（不是 arXiv 的 http(s)，由 background 按 Content-Type 转过来）：都先认出是哪一篇（lib/localPdf） */
+const isWeb = /^https?:\/\//i.test(rawUrl) && !normalize(rawUrl);
+const isLocal = isLocalPdfUrl(rawUrl) || isWeb;
 
 /** 本地文件读不到：多半是没给插件打开「允许访问文件网址」 */
 function FileAccessHelp() {
@@ -69,11 +71,16 @@ function App() {
   useEffect(() => {
     if (!isLocal) return;
     document.title = fileNameOf(rawUrl);
-    identifyLocalPdf(rawUrl).then(setLocal).catch(e => setLocal({ error: e instanceof FileAccessError ? "access" : (e?.message || "打不开") }));
+    identifyPdf(rawUrl, { online: isWeb }).then(setLocal).catch(e => setLocal({ error: e instanceof FileAccessError ? "access" : (e?.message || "打不开") }));
   }, []);
 
   useEffect(() => {
     if (isLocal && local?.title && !local.arxivId) { setTitle(local.title); document.title = local.title; }
+    // 认出 DOI 的：标题用 Crossref 登记的（期刊 PDF 的元数据标题常常是「pone.0000001 1..11」这种排版文件名）
+    if (isLocal && local?.doi && !local.arxivId) {
+      fetch(`https://api.crossref.org/works/${encodeURIComponent(local.doi)}`).then(r => (r.ok ? r.json() : null))
+        .then(d => { const t = d?.message?.title?.[0]?.replace(/\s+/g, " ").trim(); if (t) { setTitle(t); document.title = t; } }).catch(() => {});
+    }
     if (!target?.id) return;
     document.title = `arXiv:${target.id}`;
     fetchTitle(target.id).then(t => { if (t) { setTitle(t); document.title = t; } });
@@ -84,12 +91,17 @@ function App() {
   }
   if (isLocal && local.error) {
     if (local.error === "access") return <FileAccessHelp />;
-    return <div className="h-screen flex items-center justify-center text-[13px] text-[#ddd] font-sans">打不开这个文件：{local.error}</div>;
+    return (
+      <div className="h-screen flex flex-col items-center justify-center gap-2 text-[13px] text-[#ddd] font-sans">
+        <div>打不开这个文件：{local.error}</div>
+        {isWeb && <a href={rawUrl} className="text-[#7ec8e3] underline" onClick={(e) => { e.preventDefault(); chrome.runtime.sendMessage({ type: "viewer:raw", url: rawUrl }); }}>用浏览器自带的阅读器打开</a>}
+      </div>
+    );
   }
   if (!target) {
     return (
       <div className="h-screen flex items-center justify-center text-[13px] text-[#ddd] font-sans text-center px-6 leading-relaxed">
-        这个阅读器目前只支持 arXiv 的论文和本地 PDF 文件。<br />
+        这个地址不是 PDF。<br />
         {rawUrl && <a href={rawUrl} className="text-[#7ec8e3] underline">直接打开原链接</a>}
       </div>
     );
