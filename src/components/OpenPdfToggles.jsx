@@ -48,6 +48,7 @@ export default function OpenPdfToggles({ Switch, compact = false }) {
   );
   return (
     <>
+      <div className={`text-[11.5px] text-[#9a9a9a] ${compact ? "" : "pt-2"}`}>用本阅读器打开</div>
       {row("在线 PDF", onlineHint, s.interceptOnline, toggleOnline)}
       {row("本地 PDF", localHint, s.interceptLocal, () => setSettings({ interceptLocal: !s.interceptLocal }))}
     </>
