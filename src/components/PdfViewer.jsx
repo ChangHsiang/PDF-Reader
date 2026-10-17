@@ -2082,9 +2082,19 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
         </div>
         <SyncBadge uid={uid} state={sync} pending={pendingCount} onLogin={onLogin} onSync={runSync} manual={!autoSync} />
         {commentKey && (
-          <TBtn onClick={() => setRightOpen(v => !v)} active={rightOpen} title="论文评论（和 ResearchHub 网站互通）">
-            <Icon d={IconChat} />{commentCount ? <span className="tabular-nums">{commentCount}</span> : null}
-          </TBtn>
+          <div className="relative">
+            <TBtn onClick={() => setRightOpen(v => !v)} active={rightOpen} title="论文评论（和 ResearchHub 网站互通）">
+              <Icon d={IconChat} />
+            </TBtn>
+            {/* 评论数：角标挂在右上角，位数多了按钮也不变宽；过百显示 99+ */}
+            {commentCount ? (
+              <span className="absolute -top-1 -right-1.5 h-[15px] min-w-[15px] px-[4px] rounded-full bg-[#7ec8e3] text-[#10232c]
+                               text-[10px] leading-[15px] font-bold text-center tabular-nums pointer-events-none
+                               shadow-[0_0_0_2px_#323639]">
+                {commentCount > 99 ? "99+" : commentCount}
+              </span>
+            ) : null}
+          </div>
         )}
         {me && <AccountMenu me={me} email={session?.email} onLibrary={() => setLibraryOpen(true)} />}
         </div>
