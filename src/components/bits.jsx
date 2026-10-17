@@ -40,18 +40,21 @@ export function UserLink({ user, className = "", children }) {
   );
 }
 
-function timeAgo(ts) {
-  const s = (Date.now() - new Date(ts).getTime()) / 1000;
+/* 网站库里 comments 等老表的 created_at 是 timestamp without time zone（存的是 UTC，但不带时区）——
+   直接 new Date 会被当成本地时间，在国内差 8 小时。没带时区的字符串补个 Z（网站 Feed 也是这么做的） */
+const toDate = (ts) => new Date(typeof ts === "string" && /T\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(ts) ? `${ts}Z` : ts);
+
+function timeAgo(d) {
+  const s = (Date.now() - d.getTime()) / 1000;
   if (s < 60) return "刚刚";
   if (s < 3600) return `${Math.floor(s / 60)} 分钟前`;
   if (s < 86400) return `${Math.floor(s / 3600)} 小时前`;
   if (s < 86400 * 30) return `${Math.floor(s / 86400)} 天前`;
-  const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 export const TimeText = ({ ts, className = "" }) => ts ? (
-  <span className={`cursor-default ${className}`} title={new Date(ts).toLocaleString()}>{timeAgo(ts)}</span>
+  <span className={`cursor-default ${className}`} title={toDate(ts).toLocaleString()}>{timeAgo(toDate(ts))}</span>
 ) : null;
 
 /* ── 带 LaTeX 的文本 ─────────────────────────────────────────────────
