@@ -6,6 +6,7 @@ import { useUpdate, openTab, openExtensionsPage } from "../lib/update";
 import { exportBackup, importBackup, currentStats } from "../lib/backup";
 import { GOOGLE_CLIENT_ID } from "../lib/config";
 import OpenPdfToggles from "./OpenPdfToggles";
+import { DeleteButton } from "./PdfNotes";
 
 /**
  * 阅读器顶栏「设置」：阅读 + 翻译两组。
@@ -99,7 +100,7 @@ export default function SettingsDialog({ onClose }) {
 
   useEffect(() => {
     // 下拉菜单开着时 Esc 只收起菜单（菜单自己处理）
-    const onKey = (e) => { if (e.key === "Escape" && !document.querySelector(".rh-dd-menu")) { e.stopPropagation(); onClose(); } };
+    const onKey = (e) => { if (e.key === "Escape" && !document.querySelector(".rh-dd-menu, .rh-restore-dlg")) { e.stopPropagation(); onClose(); } };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
@@ -379,15 +380,13 @@ function DriveBackup({ btn, onRestored }) {
   const [busy, setBusy] = useState("");          // "" | connect | backup | list | <备份 id>
   const [msg, setMsg] = useState(null);
   const [items, setItems] = useState(null);       // 云端的备份（快照）列表
-  const [pick, setPick] = useState(null);         // 正在选恢复方式的那份：{ id, armed }
-  const [del, setDel] = useState(null);           // 点了一下「删除」的那份（再点一下才删）
+  const [pick, setPick] = useState(null);         // 点了「恢复」的那份：弹窗里选替换 / 合并
   useEffect(() => {
     chrome.storage.local.get("gdrive").then(r => setG(r.gdrive || null));
     const fn = (c, area) => { if (area === "local" && "gdrive" in c) setG(c.gdrive.newValue || null); };
     chrome.storage.onChanged.addListener(fn);
     return () => chrome.storage.onChanged.removeListener(fn);
   }, []);
-  useEffect(() => { if (!del) return undefined; const t = setTimeout(() => setDel(null), 3000); return () => clearTimeout(t); }, [del]);
   const send = (type, extra) => chrome.runtime.sendMessage({ type, ...extra });
   const ghost = `${btn} text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a] disabled:opacity-50`;
   const small = "h-7 px-2.5 rounded-full text-[11.5px] font-sans border cursor-pointer whitespace-nowrap bg-transparent disabled:opacity-50";
@@ -432,8 +431,7 @@ function DriveBackup({ btn, onRestored }) {
     onRestored?.();
   };
   const remove = async (id) => {
-    if (del !== id) { setDel(id); return; }
-    setDel(null); setBusy(id);
+    setBusy(id);
     const r = await send("gdrive:delete", { id }).catch((e) => ({ error: e.message }));
     setBusy("");
     if (!fail(r)) setItems(list => (list || []).filter(x => x.id !== id));
@@ -483,6 +481,7 @@ function DriveBackup({ btn, onRestored }) {
       </div>
       {msg && <div className={`text-[12px] leading-relaxed ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
 
+      {pick && <RestoreDialog item={pick} when={when} onCancel={() => setPick(null)} onRestore={(mode) => restore(pick.id, mode)} />}
       {connected && (
         <div className="border-t border-[#ffffff14] pt-2 mt-0.5">
           <div className="text-[11.5px] text-[#9a9a9a] mb-1">云端的备份（只留最近 10 份）</div>
@@ -496,25 +495,73 @@ function DriveBackup({ btn, onRestored }) {
                     {f.mine && <span className="ml-1.5 text-[10.5px] px-1.5 py-px rounded bg-[#7ec8e31f] text-[#7ec8e3]">这台电脑</span>}
                     <span className="ml-2 text-[11.5px] text-[#8a8a8a]">{f.papers} 篇 · {f.anns} 条</span>
                   </div>
-                  <button onClick={() => setPick(p => (p?.id === f.id ? null : { id: f.id, armed: false }))} disabled={!!busy}
+                  <button onClick={() => setPick(f)} disabled={!!busy}
                     className={`${small} text-[#c8c8c8] border-[#ffffff33] hover:bg-[#ffffff1a]`}>{busy === f.id ? "…" : "恢复"}</button>
-                  <button onClick={() => remove(f.id)} disabled={!!busy}
-                    className={`${small} ${del === f.id ? "text-[#ff8a80] border-[#ff8a8066] bg-[#ff8a801a]" : "text-[#9a9a9a] border-transparent hover:bg-[#ffffff1a]"}`}>
-                    {del === f.id ? "再点一下删除" : "删除"}</button>
+                  {/* 垃圾桶，同别处的删除：点两下（DeleteButton） */}
+                  <DeleteButton onConfirm={() => remove(f.id)} title="删除这份备份" size={28} icon={15} round />
                 </div>
-                {pick?.id === f.id && (
-                  <div className="mt-1.5 flex items-center gap-2 text-[11.5px] text-[#c8c8c8] flex-wrap">
-                    <span className="flex-1 min-w-[180px] text-[#9a9a9a]">替换：本机变成这份；合并：同一条留较新的，本机独有的保留</span>
-                    <button onClick={() => (pick.armed ? restore(f.id, "replace") : setPick({ id: f.id, armed: true }))}
-                      className={`${small} ${pick.armed ? "text-[#ff8a80] border-[#ff8a8066] bg-[#ff8a801a]" : "text-[#c8c8c8] border-[#ffffff33] hover:bg-[#ffffff1a]"}`}>
-                      {pick.armed ? "再点一下替换" : "替换"}</button>
-                    <button onClick={() => restore(f.id, "merge")} className={`${small} text-[#10232c] font-bold bg-[#7ec8e3] border-transparent hover:bg-[#9ad5ea]`}>合并</button>
-                  </div>
-                )}
               </div>
             ))}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 从一份云端备份恢复：选「合并」（默认，不删本机任何东西）或「替换」（本机变成这份，本机独有的会删掉 → 要点两下）。
+ * 叠在设置弹窗上面；Esc / 点外面 / 取消 关掉（设置弹窗的 Esc 认 .rh-restore-dlg，不会连带关掉设置）
+ */
+function RestoreDialog({ item, when, onCancel, onRestore }) {
+  const [mode, setMode] = useState("merge");
+  const [armed, setArmed] = useState(false);
+  useEffect(() => { setArmed(false); }, [mode]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onCancel(); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onCancel]);
+  const go = () => {
+    if (mode === "replace" && !armed) { setArmed(true); return; }
+    onRestore(mode);
+  };
+  const opts = [
+    ["merge", "合并", "把备份里的笔记补进来；同一条两边都有时留较新的。本机的笔记不会删。"],
+    ["replace", "替换", "本机变得和这份备份一模一样：本机有、备份里没有的笔记会被删除。"],
+  ];
+  return createPortal(
+    <div className="rh-restore-dlg fixed inset-0 z-[220] bg-black/50 flex items-center justify-center p-4 animate-fade-in font-sans"
+      onMouseDown={e => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div className="w-full max-w-[400px] rounded-xl bg-[#323639] border border-[#ffffff26] shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-5">
+        <div className="text-[14.5px] text-[#fff] font-bold">从这份备份恢复</div>
+        <div className="text-[12px] text-[#9a9a9a] mt-1">
+          {when(item.time)}{item.mine ? "（这台电脑）" : ""} · {item.papers} 篇论文、{item.anns} 条标注
+        </div>
+        <div className="flex flex-col gap-2 mt-4">
+          {opts.map(([k, label, desc]) => (
+            <button key={k} onClick={() => setMode(k)}
+              className={`text-left rounded-lg px-3 py-2.5 border cursor-pointer bg-transparent
+                ${mode === k ? "border-[#7ec8e3] bg-[#7ec8e314]" : "border-[#ffffff26] hover:bg-[#ffffff0d]"}`}>
+              <div className="flex items-center gap-2">
+                <span className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${mode === k ? "border-[#7ec8e3] bg-[#7ec8e3] shadow-[inset_0_0_0_2px_#323639]" : "border-[#ffffff59]"}`} />
+                <span className="text-[13px] text-[#f2f2f2] font-bold">{label}</span>
+                {k === "merge" && <span className="text-[11px] text-[#9a9a9a]">推荐</span>}
+              </div>
+              <div className={`text-[12px] leading-relaxed mt-1 pl-[22px] ${k === "replace" ? "text-[#ffb36b]" : "text-[#9a9a9a]"}`}>{desc}</div>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onCancel}
+            className="h-8 px-4 rounded-full text-[12.5px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">取消</button>
+          <button onClick={go}
+            className={`h-8 px-4 rounded-full text-[12.5px] font-bold border-none cursor-pointer
+              ${armed ? "text-[#fff] bg-[#d93025] hover:bg-[#b3261e]" : "text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea]"}`}>
+            {mode === "replace" ? (armed ? "再点一下替换" : "替换") : "合并"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
