@@ -71,9 +71,9 @@ body { font-family: theme("fontFamily.sans"); }
 .rh-area-mode .page .textLayer { pointer-events: none; }
 
 /* 画笔 / 橡皮擦（和框选共用 rh-area-mode：不能选字、手指拖动是画而不是滚动），只换光标。
-   热点放在笔尖（左下角）/ 圆心 */
+   画笔的光标是「落点」圆点（颜色 / 粗细跟着笔，PdfViewer 写进 --rh-pen-cursor），热点在圆心；变量没设时退回笔形 */
 .rh-pen-mode .page {
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24' fill='white' stroke='%23222' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 3l4 4L8 20l-5 1 1-5z'/%3E%3C/svg%3E") 2 21, crosshair;
+  cursor: var(--rh-pen-cursor, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24' fill='white' stroke='%23222' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M17 3l4 4L8 20l-5 1 1-5z'/%3E%3C/svg%3E") 2 21, crosshair);
 }
 .rh-textbox-mode .page { cursor: text; }
 .rh-note-mode .page { cursor: crosshair; }

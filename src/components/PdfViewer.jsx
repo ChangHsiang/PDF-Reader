@@ -1205,6 +1205,18 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
   const [penStyle, setPenStyle] = useState(loadPenStyle);
   const penStyleRef = useRef(penStyle);
   useEffect(() => { penStyleRef.current = penStyle; savePenStyle(penStyle); }, [penStyle]);
+  /* 画笔光标 = 落点：一个和笔同色、同粗（按当前缩放）的圆点，外面一圈白 + 一圈深色，深浅底上都看得见；
+     热点在圆心。挂成 :root 上的 CSS 变量，主阅读区和分屏都用（index.css 的 .rh-pen-mode） */
+  useEffect(() => {
+    const d = Math.min(60, Math.max(3, penStyle.width * zoom));
+    const S = 2 * Math.ceil((d + 6) / 2), c = S / 2;     // 边长取偶数，圆心正好落在整像素的热点上
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${S}' height='${S}'>`
+      + `<circle cx='${c}' cy='${c}' r='${d / 2 + 1.5}' fill='none' stroke='rgba(0,0,0,0.55)' stroke-width='1'/>`
+      + `<circle cx='${c}' cy='${c}' r='${d / 2 + 0.5}' fill='none' stroke='white' stroke-width='1'/>`
+      + `<circle cx='${c}' cy='${c}' r='${d / 2}' fill='${rgba(penStyle.color, 0.95)}'/></svg>`;
+    document.documentElement.style.setProperty("--rh-pen-cursor",
+      `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${c} ${c}, crosshair`);
+  }, [penStyle, zoom]);
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const mineRef = useRef(mine);
