@@ -103,8 +103,10 @@ const handlers = {
   "comments:count": (m) => countComments(m.paperKey),
   "gdrive:connect": () => gdrive.connect(),
   "gdrive:disconnect": () => gdrive.disconnect(),
-  "gdrive:backup": () => gdrive.backupNow(),
-  "gdrive:restore": () => gdrive.restore(),
+  "gdrive:backup": (m) => gdrive.backupNow({ manual: !!m.manual }),
+  "gdrive:list": () => gdrive.listBackups(),
+  "gdrive:restore": (m) => gdrive.restore(m.id, m.mode),
+  "gdrive:delete": (m) => gdrive.deleteBackup(m.id),
   "gdrive:auto": (m) => gdrive.setAuto(m.on),
   /* 「用浏览器自带的阅读器打开」：在阅读器右边开一个新标签（阅读器留着），先开空白页拿到标签号，
      给它加上放行，再让它去原文件地址（不然又被转回阅读器） */

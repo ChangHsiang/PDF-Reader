@@ -120,3 +120,24 @@ export async function importBackupData(data) {
   } catch { /* 偏好恢复不了不要紧 */ }
   return currentStats();               // 合并之后本机一共多少（界面上说「现在共 X 篇」）
 }
+
+/**
+ * 用一份备份**替换**本机（快照恢复的标准用法）：本机的笔记变成和备份一模一样 —— 备份里没有的论文删掉，
+ * 「他人」里隐藏的那张表也换成备份里的；设置用备份里的（API Key 保留现在的）。偏好（localStorage）同合并：只补没有的
+ */
+export async function replaceWithBackup(data) {
+  if (data?.app !== APP || !data.storage) throw new Error("不是 PDF-Reader 的备份文件");
+  if (data.format > FORMAT) throw new Error("这个备份是更新的版本导出的，请先把插件升级到最新版");
+  const cur = await chrome.storage.local.get(null);
+  const out = {};
+  for (const [k, v] of Object.entries(data.storage)) if (k.startsWith(PAPER) && v) out[k] = v;
+  out.others_hidden = Array.isArray(data.storage.others_hidden) ? data.storage.others_hidden : [];
+  if (data.storage.settings) {
+    const s = data.storage.settings, c = cur.settings || {};
+    out.settings = { ...s, customApi: { ...(s.customApi || {}), apiKey: c.customApi?.apiKey || "" } };
+  }
+  const gone = Object.keys(cur).filter(k => k.startsWith(PAPER) && !(k in out));
+  if (gone.length) await chrome.storage.local.remove(gone);
+  await chrome.storage.local.set(out);
+  return currentStats();
+}

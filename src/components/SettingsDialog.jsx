@@ -376,35 +376,60 @@ function DataSection({ btn }) {
  */
 function DriveBackup({ btn, onRestored }) {
   const [g, setG] = useState(null);
-  const [busy, setBusy] = useState("");          // "" | connect | backup | restore
+  const [busy, setBusy] = useState("");          // "" | connect | backup | list | <备份 id>
   const [msg, setMsg] = useState(null);
-  const [offer, setOffer] = useState(null);       // 连上时云端已经有备份：问要不要合并
+  const [items, setItems] = useState(null);       // 云端的备份（快照）列表
+  const [pick, setPick] = useState(null);         // 正在选恢复方式的那份：{ id, armed }
+  const [del, setDel] = useState(null);           // 点了一下「删除」的那份（再点一下才删）
   useEffect(() => {
     chrome.storage.local.get("gdrive").then(r => setG(r.gdrive || null));
     const fn = (c, area) => { if (area === "local" && "gdrive" in c) setG(c.gdrive.newValue || null); };
     chrome.storage.onChanged.addListener(fn);
     return () => chrome.storage.onChanged.removeListener(fn);
   }, []);
+  useEffect(() => { if (!del) return undefined; const t = setTimeout(() => setDel(null), 3000); return () => clearTimeout(t); }, [del]);
   const send = (type, extra) => chrome.runtime.sendMessage({ type, ...extra });
   const ghost = `${btn} text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a] disabled:opacity-50`;
-  const run = async (kind, type, ok) => {
-    setBusy(kind); setMsg(null);
-    const r = await send(type).catch((e) => ({ error: e.message }));
-    setBusy("");
-    if (r?.error || r?.ok === false) { setMsg({ ok: false, text: r.error || "失败了" }); return null; }
-    if (ok) setMsg({ ok: true, text: ok(r) });
-    return r;
+  const small = "h-7 px-2.5 rounded-full text-[11.5px] font-sans border cursor-pointer whitespace-nowrap bg-transparent disabled:opacity-50";
+  const fail = (r) => { if (r?.error || r?.ok === false) { setMsg({ ok: false, text: r?.error || "失败了" }); return true; } return false; };
+  const loadList = async () => {
+    const r = await send("gdrive:list").catch((e) => ({ ok: false, error: e.message }));
+    if (!fail(r)) setItems(r.items || []);
   };
+  const connected = !!g?.email && !g?.needAuth;
+  useEffect(() => { if (connected && items === null) loadList(); }, [connected]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const connect = async () => {
-    const r = await run("connect", "gdrive:connect");
-    if (!r) return;
-    if (r.remote) setOffer(r.remote);
-    else send("gdrive:backup");                    // 云端还没有：先传一份
+    setBusy("connect"); setMsg(null);
+    const r = await send("gdrive:connect").catch((e) => ({ error: e.message }));
+    setBusy("");
+    if (fail(r)) return;
+    setItems(r.items || []);
+    if (r.items?.length) setMsg({ ok: true, text: `云端有 ${r.items.length} 份备份，可以在下面选一份恢复` });
+    else send("gdrive:backup");                     // 云端还没有：先备份一份
   };
-  const restore = async () => {
-    setOffer(null);
-    const r = await run("restore", "gdrive:restore", (x) => `已从云端合并：现在共 ${x.papers} 篇论文、${x.anns} 条标注（同一条留较新的）`);
-    if (r) onRestored?.();
+  const backup = async () => {
+    setBusy("backup"); setMsg(null);
+    const r = await send("gdrive:backup", { manual: true }).catch((e) => ({ error: e.message }));
+    setBusy("");
+    if (fail(r)) return;
+    setMsg({ ok: true, text: `已备份：${r.papers} 篇论文、${r.anns} 条标注` });
+    loadList();
+  };
+  const restore = async (id, mode) => {
+    setPick(null); setBusy(id); setMsg(null);
+    const r = await send("gdrive:restore", { id, mode }).catch((e) => ({ error: e.message }));
+    setBusy("");
+    if (fail(r)) return;
+    setMsg({ ok: true, text: `${mode === "replace" ? "已替换成这份备份" : "已合并（同一条留较新的）"}：现在共 ${r.papers} 篇论文、${r.anns} 条标注` });
+    onRestored?.();
+  };
+  const remove = async (id) => {
+    if (del !== id) { setDel(id); return; }
+    setDel(null); setBusy(id);
+    const r = await send("gdrive:delete", { id }).catch((e) => ({ error: e.message }));
+    setBusy("");
+    if (!fail(r)) setItems(list => (list || []).filter(x => x.id !== id));
   };
   const when = (iso) => (iso ? new Date(iso).toLocaleString() : "");
   const box = "rounded-md border border-[#ffffff1f] bg-[#ffffff08] px-3 py-2.5 flex flex-col gap-2 mt-1";
@@ -428,7 +453,7 @@ function DriveBackup({ btn, onRestored }) {
     <div className={box}>
       <div className="flex items-center gap-2">
         <span className="flex-1 min-w-0 truncate text-[#e6e6e6]">备份到 Google 云端硬盘 · <span className="text-[#9a9a9a]">{g.email}</span></span>
-        <button onClick={() => send("gdrive:disconnect")} className={ghost}>断开</button>
+        <button onClick={() => { send("gdrive:disconnect"); setItems(null); }} className={ghost}>断开</button>
       </div>
       {g.needAuth ? (
         <div className="flex items-center gap-2 text-[12px] text-[#ffb36b]">
@@ -444,21 +469,45 @@ function DriveBackup({ btn, onRestored }) {
       <div className="flex items-center gap-2">
         <span className="flex-1 flex items-center gap-2">
           <Switch on={g.auto !== false} onClick={() => send("gdrive:auto", { on: g.auto === false })} />
-          <span className="text-[12px]">笔记有改动时自动备份</span>
+          <span className="text-[12px]">自动备份（一天一份）</span>
         </span>
-        <button onClick={() => run("backup", "gdrive:backup", (x) => `已备份：${x.papers} 篇论文、${x.anns} 条标注`)} disabled={!!busy}
-          className={ghost} style={{ border: "1px solid #ffffff33" }}>{busy === "backup" ? "备份中…" : "立即备份"}</button>
-        <button onClick={restore} disabled={!!busy} className={ghost} style={{ border: "1px solid #ffffff33" }}>
-          {busy === "restore" ? "恢复中…" : "从云端恢复"}</button>
+        <button onClick={backup} disabled={!!busy || g.needAuth} className={ghost} style={{ border: "1px solid #ffffff33" }}>
+          {busy === "backup" ? "备份中…" : "立即备份"}</button>
       </div>
-      {offer && (
-        <div className="rounded-md bg-[#7ec8e314] border border-[#7ec8e340] px-2.5 py-2 text-[12px] leading-relaxed flex items-center gap-2">
-          <span className="flex-1">云端已经有一份 {when(offer)} 的备份，要合并到这台电脑吗？</span>
-          <button onClick={restore} className={`${btn} font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea]`}>合并</button>
-          <button onClick={() => setOffer(null)} className={ghost}>不用</button>
+      {msg && <div className={`text-[12px] leading-relaxed ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
+
+      {connected && (
+        <div className="border-t border-[#ffffff14] pt-2 mt-0.5">
+          <div className="text-[11.5px] text-[#9a9a9a] mb-1">云端的备份（只留最近 10 份）</div>
+          {items === null ? <div className="text-[12px] text-[#8a8a8a] py-1">正在读取…</div>
+            : !items.length ? <div className="text-[12px] text-[#8a8a8a] py-1">还没有备份</div>
+            : items.map(f => (
+              <div key={f.id} className="py-1.5 border-b border-[#ffffff0d] last:border-b-0">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0 text-[12.5px] text-[#e6e6e6]">
+                    {when(f.time)}
+                    {f.mine && <span className="ml-1.5 text-[10.5px] px-1.5 py-px rounded bg-[#7ec8e31f] text-[#7ec8e3]">这台电脑</span>}
+                    <span className="ml-2 text-[11.5px] text-[#8a8a8a]">{f.papers} 篇 · {f.anns} 条</span>
+                  </div>
+                  <button onClick={() => setPick(p => (p?.id === f.id ? null : { id: f.id, armed: false }))} disabled={!!busy}
+                    className={`${small} text-[#c8c8c8] border-[#ffffff33] hover:bg-[#ffffff1a]`}>{busy === f.id ? "…" : "恢复"}</button>
+                  <button onClick={() => remove(f.id)} disabled={!!busy}
+                    className={`${small} ${del === f.id ? "text-[#ff8a80] border-[#ff8a8066] bg-[#ff8a801a]" : "text-[#9a9a9a] border-transparent hover:bg-[#ffffff1a]"}`}>
+                    {del === f.id ? "再点一下删除" : "删除"}</button>
+                </div>
+                {pick?.id === f.id && (
+                  <div className="mt-1.5 flex items-center gap-2 text-[11.5px] text-[#c8c8c8] flex-wrap">
+                    <span className="flex-1 min-w-[180px] text-[#9a9a9a]">替换：本机变成这份；合并：同一条留较新的，本机独有的保留</span>
+                    <button onClick={() => (pick.armed ? restore(f.id, "replace") : setPick({ id: f.id, armed: true }))}
+                      className={`${small} ${pick.armed ? "text-[#ff8a80] border-[#ff8a8066] bg-[#ff8a801a]" : "text-[#c8c8c8] border-[#ffffff33] hover:bg-[#ffffff1a]"}`}>
+                      {pick.armed ? "再点一下替换" : "替换"}</button>
+                    <button onClick={() => restore(f.id, "merge")} className={`${small} text-[#10232c] font-bold bg-[#7ec8e3] border-transparent hover:bg-[#9ad5ea]`}>合并</button>
+                  </div>
+                )}
+              </div>
+            ))}
         </div>
       )}
-      {msg && <div className={`text-[12px] leading-relaxed ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
     </div>
   );
 }
