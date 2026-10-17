@@ -27,15 +27,32 @@ function normalize(u) {
   return id ? { id, url: `https://arxiv.org/pdf/${id}` } : null;
 }
 
-/** 标题：arXiv API 的 Atom（PDF 自带的元数据里 arXiv 论文多半没有标题） */
-async function fetchTitle(id) {
-  try {
-    const r = await fetch(`https://export.arxiv.org/api/query?id_list=${encodeURIComponent(id)}`);
-    const xml = new DOMParser().parseFromString(await r.text(), "application/xml");
-    const t = xml.querySelector("entry > title")?.textContent;
-    return t ? t.replace(/\s+/g, " ").trim() : null;
-  } catch { return null; }
+/** 标题和最新版本号：读 arXiv 的摘要页（citation_title、og:url 里带 vN）。
+    原来用 export.arxiv.org 的 API，那个接口经常请求不到（标题就空着、版本号也补不上）；API 留作后备 */
+const metaCache = new Map();
+function fetchMeta(id) {
+  if (!metaCache.has(id)) {
+    metaCache.set(id, (async () => {
+      try {
+        const html = await (await fetch(`https://arxiv.org/abs/${id}`)).text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const title = doc.querySelector('meta[name="citation_title"]')?.content?.replace(/\s+/g, " ").trim() || null;
+        const version = /v(\d+)\/?$/.exec(doc.querySelector('meta[property="og:url"]')?.content || "")?.[1] || null;
+        if (title) return { title, version };
+      } catch { /* 走后备 */ }
+      try {
+        const r = await fetch(`https://export.arxiv.org/api/query?id_list=${encodeURIComponent(id)}`);
+        const xml = new DOMParser().parseFromString(await r.text(), "application/xml");
+        const t = xml.querySelector("entry > title")?.textContent;
+        const v = /v(\d+)$/.exec(xml.querySelector("entry > id")?.textContent || "")?.[1] || null;
+        return { title: t ? t.replace(/\s+/g, " ").trim() : null, version: v };
+      } catch { return { title: null, version: null }; }
+    })());
+  }
+  return metaCache.get(id);
 }
+/** 等一会儿版本号（地址里没写 vN 时）：最多 4 秒，等不到就照原样打开 */
+const withTimeout = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
 
 /* 本地文件，或其他网站的 PDF（不是 arXiv 的 http(s)，由 background 按 Content-Type 转过来）：都先认出是哪一篇（lib/localPdf） */
 const isWeb = /^https?:\/\//i.test(rawUrl) && !normalize(rawUrl);
@@ -64,7 +81,16 @@ function FileAccessHelp() {
 function App() {
   const session = useSession();
   const [local, setLocal] = useState(null);      // 本地文件：{ paperKey, arxivId, name, title } | { error }
-  const target = isLocal ? (local?.paperKey ? { id: local.arxivId, url: rawUrl, paperKey: local.paperKey } : null) : normalize(rawUrl);
+  /* 地址里没写版本号（arxiv.org/pdf/2011.03014）：先查出最新是 vN 再打开 —— 笔记按版本存、下载的文件名也带版本 */
+  const online = !isLocal ? normalize(rawUrl) : null;
+  const needVer = !!online && !/v\d+$/.test(online.id);
+  const [verId, setVerId] = useState(needVer ? undefined : null);      // undefined = 还在查
+  useEffect(() => {
+    if (!needVer) return;
+    withTimeout(fetchMeta(online.id), 4000).then(m => setVerId(m?.version ? `${online.id}v${m.version}` : null));
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+  const target = isLocal ? (local?.paperKey ? { id: local.arxivId, url: rawUrl, paperKey: local.paperKey } : null)
+    : verId ? { id: verId, url: `https://arxiv.org/pdf/${verId}` } : online;
   const [title, setTitle] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
 
@@ -83,7 +109,7 @@ function App() {
     }
     if (!target?.id) return;
     document.title = `arXiv:${target.id}`;
-    fetchTitle(target.id).then(t => { if (t) { setTitle(t); document.title = t; } });
+    fetchMeta(target.id.replace(/v\d+$/, "")).then(m => { if (m?.title) { setTitle(m.title); document.title = m.title; } });
   }, [target?.id, local]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLocal && !local) {
@@ -106,7 +132,7 @@ function App() {
       </div>
     );
   }
-  if (session === undefined) return null;   // 登录态还没读到，别先按「没登录」渲染一遍
+  if (session === undefined || verId === undefined) return null;   // 登录态 / 版本号还没读到，别先渲染一遍   // 登录态还没读到，别先按「没登录」渲染一遍
 
   return (
     <>
