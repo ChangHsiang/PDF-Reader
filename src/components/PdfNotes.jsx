@@ -823,14 +823,12 @@ export function NotesList({
                 </button>
               ))}
             </div>
-            {allTags.length > 0 ? (
+            {allTags.length > 0 && (
               <div className="flex flex-wrap gap-1 max-h-[84px] overflow-y-auto thin-scrollbar">
                 {allTags.map(t => (
                   <button key={t} onClick={() => onTag(t)} className={chip(tags.has(t))}>#{t}</button>
                 ))}
               </div>
-            ) : (
-              <div className="text-[10.5px] text-[#8a8a8a] font-sans">还没有标签。在「改」里可以给标注加标签。</div>
             )}
           </div>
         )}
