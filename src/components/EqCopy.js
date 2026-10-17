@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { pageCanvasBox } from "../lib/pdfAnchor";
-import { clientRectToNorm } from "../lib/pdfium/rotate";
+import { clientRectToNorm, pageSizePx } from "../lib/pdfium/rotate";
 import { equationsFor, normLabel, sourceSize } from "../lib/latexSource";
 
 /**
@@ -89,6 +89,7 @@ export function useEquationCopy(viewerElRef, apiRef, ready, arxivId, enabled) {
       if (!cands) {
         if (!tl?.querySelector("span")) { layer?.remove(); return; }   // 文字层还没出来，等 textlayerrendered
         const box = pageCanvasBox(pageEl);
+        const sz = pageSizePx(pageEl);
         // 都换成页面方向的比例坐标再比（转过的页也对，见 lib/pdfium/rotate.js）；x 方向的阈值按页宽算
         const spans = [...tl.querySelectorAll("span")]
           .filter(s => !s.children.length && s.textContent.trim())
@@ -98,18 +99,38 @@ export function useEquationCopy(viewerElRef, apiRef, ready, arxivId, enabled) {
           const m = NUM_RE.exec(c.t);
           if (!m) continue;
           const cy = (c.r.top + c.r.bottom) / 2;
-          let left = -Infinity, right = Infinity;
+          let right = Infinity;
+          const leftOnes = [];                                  // 同一行、在编号左边的字
           for (const o of spans) {
             if (o === c || o.r.top > cy || o.r.bottom < cy) continue;
-            if (o.r.right <= c.r.left + 0.001) left = Math.max(left, o.r.right);
+            if (o.r.right <= c.r.left + 0.001) leftOnes.push(o);
             else if (o.r.left >= c.r.right - 0.001) right = Math.min(right, o.r.left);
           }
-          /* 紧挨着字 = 正文里的引用（「Eq. (3)」之间只隔一个空格，2~4px）。阈值别定太大：
-             长公式会一直写到编号跟前，实测只剩 16~21px（页宽 816 时），3% 就漏掉了 */
-          if (left !== -Infinity && c.r.left - left < 0.012) continue;
-          /* 右边紧跟着字 = 也是正文里的引用：折行时「(23) for more…」会排到行首，左边空着（踩过）。
+          /* 右边紧跟着字 = 正文里的引用：折行时「(23) for more…」会排到行首，左边空着（踩过）。
              真的公式编号右对齐在栏边，右边要么没字、要么隔着栏间距到了另一栏 */
           if (right !== Infinity && right - c.r.right < 0.015) continue;
+          /* 左边紧挨着字 = 正文里的引用（「Eq. (3)」）。怎么算「紧挨着」：
+             - 隔得够远（≥ 1.2% 页宽，约 10px）一定是公式编号
+             - 近的话，和**同一行、同一栏**里别的词间距比：比它们明显宽（> 1.6 倍中位数）才是编号。
+               两端对齐的正文一行里词间距都差不多（「combined with (19)」每个空格都 7~8px，踩过）；
+               公式里的字挨得紧（3px 上下），编号前那道空就显得宽（2011.03014 的 (39) 只隔 9px，以前按 1.2% 漏掉了）
+             - 左边只有一两个字、比不出来时，按字号：不到半个字宽算紧挨着 */
+          leftOnes.sort((p, q) => q.r.right - p.r.right);
+          if (leftOnes.length) {
+            const gap = c.r.left - leftOnes[0].r.right;
+            if (gap < 0.012) {
+              const gaps = [];
+              for (let k = 1; k < leftOnes.length; k++) {
+                const g = leftOnes[k - 1].r.left - leftOnes[k].r.right;
+                if (g > 0.025) break;                            // 到了栏间距：另一栏的字不算
+                if (g >= 0) gaps.push(g);
+              }
+              gaps.sort((p, q) => p - q);
+              const fontW = (c.r.bottom - c.r.top) * sz.h / sz.w; // 编号的高度（≈ 字号）换成页宽的比例
+              const limit = gaps.length >= 3 ? gaps[gaps.length >> 1] * 1.6 : fontW * 0.5;
+              if (gap < limit) continue;
+            }
+          }
           cands.push({ label: normLabel(m[1]), x: c.r.right, y: cy });
         }
         candCache.set(n, cands);
