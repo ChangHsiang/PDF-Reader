@@ -108,8 +108,10 @@ function App() {
         .then(d => { const t = d?.message?.title?.[0]?.replace(/\s+/g, " ").trim(); if (t) { setTitle(t); document.title = t; } }).catch(() => {});
     }
     if (!target?.id) return;
-    document.title = `arXiv:${target.id}`;
-    fetchMeta(target.id.replace(/v\d+$/, "")).then(m => { if (m?.title) { setTitle(m.title); document.title = m.title; } });
+    // 标签名同 arXiv 摘要页：「[编号] 标题」（编号不带版本号）
+    const bare = target.id.replace(/v\d+$/, "");
+    document.title = `[${bare}]`;
+    fetchMeta(bare).then(m => { if (m?.title) { setTitle(m.title); document.title = `[${bare}] ${m.title}`; } });
   }, [target?.id, local]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLocal && !local) {
