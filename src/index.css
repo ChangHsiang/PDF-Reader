@@ -94,6 +94,11 @@ body { font-family: theme("fontFamily.sans"); }
 .rh-lid { transition: transform .15s ease-out; transform-box: fill-box; transform-origin: 0% 100%; }
 .rh-armed .rh-lid { transform: translate(-1px, -2px) rotate(-22deg); }
 .rh-armed { animation: rh-shake .32s ease-in-out; }
+/* 「断开」按钮（UnlinkButton）点第一下：链子两半往两边拉开、中间那一截淡掉（同垃圾桶掀盖子） */
+.rh-link-l, .rh-link-r, .rh-link-mid { transition: transform .15s ease-out, opacity .15s ease-out; }
+.rh-armed .rh-link-l { transform: translateX(-2.5px); }
+.rh-armed .rh-link-r { transform: translateX(2.5px); }
+.rh-armed .rh-link-mid { opacity: 0; }
 @keyframes rh-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 50% { transform: rotate(7deg); } 75% { transform: rotate(-4deg); } }
 .rh-note-tip b { display: block; font-size: 12px; margin-bottom: 2px; }
 .rh-note-tip-body { white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }

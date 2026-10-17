@@ -458,13 +458,8 @@ function DriveBackup({ btn, onRestored }) {
     <div className={box}>
       <div className="flex items-center gap-2">
         <span className="flex-1 min-w-0 truncate text-[#e6e6e6]">备份到 Google 云端硬盘 · <span className="text-[#9a9a9a]">{g.email}</span></span>
-        {/* 断开（解除关联的链子图标）：云端的备份不会删，重新连接就回来 */}
-        <button onClick={() => { send("gdrive:disconnect"); setItems(null); }} title="断开 Google 账号"
-          className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center border-none cursor-pointer bg-transparent text-[#c0c0c0] hover:text-[#fff] hover:bg-[#ffffff1a]">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 17H7a5 5 0 0 1 0-10h2" /><path d="M15 7h2a5 5 0 0 1 4 8" /><line x1="8" y1="12" x2="11" y2="12" /><line x1="3" y1="3" x2="21" y2="21" />
-          </svg>
-        </button>
+        {/* 断开（云端的备份不会删，重新连接就回来）：同删除，点两下 */}
+        <UnlinkButton onConfirm={() => { send("gdrive:disconnect"); setItems(null); }} />
       </div>
       {g.needAuth ? (
         <div className="flex items-center gap-2 text-[12px] text-[#ffb36b]">
@@ -569,5 +564,31 @@ function RestoreDialog({ item, when, onCancel, onRestore }) {
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** 「断开」：链子图标，点两下（同 PdfNotes 的 DeleteButton：第一下变红、链子两半拉开，3 秒内再点才断开） */
+function UnlinkButton({ onConfirm }) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef(0);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const disarmIn = (ms) => { clearTimeout(timer.current); timer.current = setTimeout(() => setArmed(false), ms); };
+  const click = () => {
+    if (armed) { clearTimeout(timer.current); setArmed(false); onConfirm(); return; }
+    setArmed(true);
+    disarmIn(3000);
+  };
+  const label = armed ? "再点一下断开" : "断开 Google 账号";
+  return (
+    <button onClick={click} onMouseLeave={() => { if (armed) disarmIn(800); }} onMouseEnter={() => { if (armed) disarmIn(3000); }}
+      title={label} aria-label={label}
+      className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center border-none cursor-pointer transition-colors
+        ${armed ? "rh-armed bg-[#d93025] text-[#fff] hover:bg-[#b3261e]" : "bg-transparent text-[#c0c0c0] hover:text-[#ff8a8a] hover:bg-[#ff8a8a1f]"}`}>
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ overflow: "visible" }}>
+        <path className="rh-link-l" d="M9 17H7a5 5 0 0 1 0-10h2" />
+        <path className="rh-link-r" d="M15 7h2a5 5 0 0 1 0 10h-2" />
+        <line className="rh-link-mid" x1="8" y1="12" x2="16" y2="12" />
+      </svg>
+    </button>
   );
 }
