@@ -2349,7 +2349,8 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
         </div>
 
         {rightOpen && commentKey && (
-          <aside className="relative w-[340px] shrink-0 bg-[#3c4043] border-l border-[#00000040] flex flex-col">
+          <aside className="relative w-[340px] shrink-0 overflow-hidden bg-[#3c4043] border-l border-[#00000040] flex flex-col">
+            {/* overflow-hidden：删除确认的遮罩（absolute inset-0）淡入时往下滑 4px，不裁掉的话整页会闪一下滚动条 */}
             <div className="shrink-0 h-8 flex items-center justify-between pl-3 pr-1 border-b border-[#00000040]">
               <span className="text-[12px] text-[#fff] font-bold font-sans">论文评论</span>
               <button onClick={() => setRightOpen(false)} title="收起"
