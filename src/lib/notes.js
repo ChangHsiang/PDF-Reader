@@ -64,7 +64,8 @@ const visibleTo = (uid) => (a) => !a.deleted && (!uid || a.account == null || a.
 export async function loadMine(paperKey, uid) {
   const d = await load(baseOf(paperKey));
   return {
-    note: d.notes[paperKey] || null,
+    // 没带版本号的笔记元信息（以前从 arxiv.org/pdf/<id> 打开时存的）算最新版的，见 PdfViewer 的 thisVersion
+    note: d.notes[paperKey] || d.notes[baseOf(paperKey)] || null,
     annotations: d.anns.filter(visibleTo(uid)),
     pending: d.anns.filter(a => a.sync !== "synced" && (!uid || a.account == null || a.account === uid)).length,
   };

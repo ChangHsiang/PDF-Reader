@@ -379,12 +379,15 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
     return () => clearTimeout(t);
   }, [uid, editTick, runSync, autoSync]);
 
+  /* 这条标注是不是做在正在看的这个版本上。没带版本号的（以前从 arxiv.org/pdf/<id> 这种地址打开时存的）
+     算最新版 —— 那种地址打开的就是当时的最新版；现在没带版本的地址会先查出 vN 再打开（viewer/main.jsx） */
+  const thisVersion = useCallback((k) => !k || k === paperKey || (/^arxiv:/.test(k) && !/v\d+$/.test(k) && paperKey.startsWith(`${k}v`)), [paperKey]);
   /* 别的版本做的标注：坐标一律不用，降级成页级 + 「位置可能不准」，再按 quote 找回页码 */
   const applyFix = useCallback((a) => {
-    if (!a.paper_key || a.paper_key === paperKey) return a;
+    if (thisVersion(a.paper_key)) return a;
     const fix = fixes[a.id];
     return { ...a, rects: null, stale: true, page: fix?.page ?? a.page };
-  }, [paperKey, fixes]);
+  }, [thisVersion, fixes]);
 
   const mineView = useMemo(() => mine.map(applyFix), [mine, applyFix]);
   /* 「他人」里自己隐藏掉的标注（lib/notes 的 others_hidden）：正文上不画；列表里收起，可以再显示出来 */
@@ -397,8 +400,8 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
 
   const foreignIds = useMemo(() => {
     const all = [...mine, ...others.flatMap(o => o.annotations)];
-    return all.filter(a => a.paper_key && a.paper_key !== paperKey && !fixes[a.id]);
-  }, [mine, others, paperKey, fixes]);
+    return all.filter(a => !thisVersion(a.paper_key) && !fixes[a.id]);
+  }, [mine, others, thisVersion, fixes]);
 
   /* 全文按页抽一次就缓存（按 doc 记）：以前「别的版本来的标注」数量每变一次（自己的先到、别人的后到）
      就把整篇重新抽一遍，几十页的论文要白跑好几秒 */
@@ -1309,7 +1312,7 @@ export default function PdfViewer({ url, paperKey: givenKey, localName, title, s
       const [u, v] = clientToNorm(pageEl, e.clientX, e.clientY);
       const px = u * box.w, py = v * box.h;
       for (const a of mineRef.current) {
-        if (a.kind !== "ink" || a.page !== n || gone.has(a.id) || a.paper_key !== paperKey) continue;
+        if (a.kind !== "ink" || a.page !== n || gone.has(a.id) || !thisVersion(a.paper_key)) continue;
         const hit = (a.rects || []).some(st => {
           const pts = (st.path || []).map(([x, y]) => [x * box.w, y * box.h]);
           const tol = R + (st.lw || 0) * box.w / 2;
