@@ -1,8 +1,10 @@
 # PDF-Reader
 
+**中文** | [English](README.en.md)
+
 arXiv 论文笔记阅读器（浏览器扩展）。打开 arXiv 论文或本地 PDF 时，换成一个能做笔记、看引用文献、划词翻译的阅读器，支持 Chrome 和 Edge。
 
-界面参照 Edge 自带的 PDF 阅读器和 Google 学术的 PDF 阅读器，PDF 用 [PDFium](https://pdfium.googlesource.com/pdfium/)（Chrome / Edge 自带阅读器的同款引擎）渲染。
+界面参照 Edge 自带的 PDF 阅读器和 Google 学术的 PDF 阅读器，PDF 用 [PDFium](https://pdfium.googlesource.com/pdfium/)（Chrome / Edge 自带阅读器的同款引擎）渲染。界面有中文和英文两种。
 
 ## 功能
 
@@ -35,6 +37,8 @@ arXiv 论文笔记阅读器（浏览器扩展）。打开 arXiv 论文或本地 
 4. 打开任意 `https://arxiv.org/pdf/…` 链接即可
 
 想用它打开电脑上的 PDF：在扩展的「详细信息」里打开「允许访问文件网址」。
+
+界面语言默认跟随浏览器，可以在阅读器的「设置 → 阅读 → 界面语言」里改。
 
 ## 升级
 
