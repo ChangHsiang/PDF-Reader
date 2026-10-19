@@ -3,6 +3,7 @@ import { Avatar, UserLink, MathText } from "./bits";
 import { normTags } from "../lib/notes";
 import { clientToNorm, normRectToClient, pageSizePx, localPlacement } from "../lib/pdfium/rotate";
 import { useKeepInView } from "../lib/useKeepInView";
+import { t as tr } from "../lib/i18n";
 
 /**
  * PDF 笔记的三块 UI：高亮层、划选工具条、笔记列表（+ 移动端的浮动入口）。
@@ -137,7 +138,7 @@ function hoverTip(a, side = "right") {
   t.className = "rh-note-tip" + (side === "left" ? " rh-tip-left" : side === "below" ? " rh-tip-below" : "");
   t.innerHTML = (a._author ? `<b>${escHtml(a._author)}</b>` : "") +
     (a.body ? `<div class="rh-note-tip-body">${escHtml(a.body)}</div>` : "") +
-    (replies.length ? `<div class="rh-note-tip-more">${replies.length} 条回复</div>` : "");
+    (replies.length ? `<div class="rh-note-tip-more">${tr("{n} 条回复", { n: replies.length })}</div>` : "");
   return t;
 }
 
@@ -379,8 +380,8 @@ export function useHighlightLayer(viewerElRef, apiRef, ready, annotations, { act
 /* ── 划选工具条 ─────────────────────────────────────────────────────
    坐标是**相对 `.pdfViewer` 内容坐标**算的，然后直接放进那棵树里 ——
    于是它跟着页面一起滚，不用监听 scroll 重定位（贴锚点的浮层最容易在这儿翻车）。 */
-const COLOR_NAMES = { yellow: "黄", red: "红", green: "绿", blue: "蓝", pink: "粉", purple: "紫", black: "黑" };
-export const KIND_LABEL = { highlight: "高亮", underline: "下划线", area: "区域", ink: "手写", text: "文本", note: "附注" };
+const COLOR_NAMES = { yellow: tr("黄"), red: tr("红"), green: tr("绿"), blue: tr("蓝"), pink: tr("粉"), purple: tr("紫"), black: tr("黑") };
+export const KIND_LABEL = { highlight: tr("高亮"), underline: tr("下划线"), area: tr("区域"), ink: tr("手写"), text: tr("文本"), note: tr("附注") };
 
 /* 高亮 / 下划线 两颗小图标。只有两个值 ⇒ 点按切换（全站规范），记住上次选的 */
 const KindIcon = ({ kind }) => (
@@ -421,7 +422,7 @@ export function SelectionBar({ pos, kind = "highlight", onKind, onHighlight, onN
         </>
       )}
       {Object.keys(COLORS).map(c => (
-        <button key={c} onClick={() => onHighlight(c)} title={`${KIND_LABEL[kind]}（${COLOR_NAMES[c]}）`}
+        <button key={c} onClick={() => onHighlight(c)} title={tr("{kind}（{color}）", { kind: KIND_LABEL[kind], color: COLOR_NAMES[c] })}
           className="w-6 h-6 rounded-md border-none cursor-pointer shrink-0 hover:scale-110 transition-transform
                      flex items-end justify-center pb-1"
           style={{ background: rgba(c, kind === "underline" ? 0.18 : 0.9),
@@ -431,18 +432,18 @@ export function SelectionBar({ pos, kind = "highlight", onKind, onHighlight, onN
       ))}
       <div className="h-4 border-l border-[#ffffff26] mx-1" />
       {onTranslate && (
-        <button onClick={onTranslate} title="翻译选中的文字"
+        <button onClick={onTranslate} title={tr("翻译选中的文字")}
           className="h-6 px-2 rounded-md text-[11.5px] font-sans text-[#e6e6e6]
                      bg-transparent border-none cursor-pointer hover:bg-[#ffffff26] shrink-0">
-          翻译
+          {tr("翻译")}
         </button>
       )}
-      <button onClick={onNote} title="加批注"
+      <button onClick={onNote} title={tr("加批注")}
         className="h-6 px-2 rounded-md text-[11.5px] font-sans text-[#e6e6e6]
                    bg-transparent border-none cursor-pointer hover:bg-[#ffffff26] shrink-0">
-        批注
+        {tr("批注")}
       </button>
-      <button onClick={onCancel} title="取消"
+      <button onClick={onCancel} title={tr("取消")}
         className="w-6 h-6 rounded-md text-[#9a9a9a] bg-transparent border-none cursor-pointer
                    hover:bg-[#ffffff26] shrink-0">✕</button>
     </div>
@@ -504,7 +505,7 @@ function AreaThumb({ doc, a }) {
     <div className="ml-3.5 rounded overflow-hidden bg-[#fff] border border-[#ffffff33]"
       style={{ aspectRatio: String(ratio), maxHeight: 200 }}>
       {src && (
-        <img src={src} alt="区域选取" draggable={false}
+        <img src={src} alt={tr("区域选取")} draggable={false}
           onLoad={e => setAr(e.currentTarget.naturalWidth / Math.max(1, e.currentTarget.naturalHeight))}
           className="block w-full h-full object-contain" />
       )}
@@ -538,7 +539,7 @@ export const kindOf = (a) => (a.kind === "area" || a.kind === "underline" || a.k
   ? a.kind
   : (a.quote ? "highlight" : "page");
 
-const KIND_FILTERS = [["highlight", "高亮"], ["underline", "下划线"], ["area", "区域"], ["ink", "手写"], ["text", "文本"], ["note", "附注"], ["page", "整页"]];
+const KIND_FILTERS = [["highlight", tr("高亮")], ["underline", tr("下划线")], ["area", tr("区域")], ["ink", tr("手写")], ["text", tr("文本")], ["note", tr("附注")], ["page", tr("整页")]];
 
 function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, active, onTag, tagOn,
                   shared, onShareExcluded, hidden, onHide }) {
@@ -563,23 +564,23 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
         )}
         <span className="text-[10.5px] text-[#9a9a9a] font-sans tabular-nums shrink-0">P{a.page}</span>
         {k === "page" && (
-          <span className="text-[10px] text-[#9a9a9a] font-sans px-1 rounded bg-[#ffffff1a] shrink-0">整页</span>
+          <span className="text-[10px] text-[#9a9a9a] font-sans px-1 rounded bg-[#ffffff1a] shrink-0">{tr("整页")}</span>
         )}
         {a.stale && (
           // 跨版本重锚失败/近似命中时的老实交代，别把高亮悄悄画到错的地方
           <span className="text-[10px] text-[#ffcf7a] font-sans px-1 rounded bg-[#ffcf7a1a] shrink-0"
-            title="这条标注做于论文的其它版本，位置可能不准">位置可能不准</span>
+            title={tr("这条标注做于论文的其它版本，位置可能不准")}>{tr("位置可能不准")}</span>
         )}
         {/* 整份分享了、但这条不分享：一直标出来（不然很容易忘了哪几条没给别人看） */}
         {mine && shared && a.share_excluded && (
-          <span className="text-[10px] text-[#b8b8b8] font-sans px-1 rounded bg-[#ffffff1a] shrink-0" title="整份笔记已分享，这一条不分享">不分享</span>
+          <span className="text-[10px] text-[#b8b8b8] font-sans px-1 rounded bg-[#ffffff1a] shrink-0" title={tr("整份笔记已分享，这一条不分享")}>{tr("不分享")}</span>
         )}
         <div className="flex-1 min-w-0" />
         {mine ? (
           /* 编辑 / 删除：图标按钮（原来是「改」「删」两个字，像随手写的批注，不像按钮）。
              平时灰色，指上去出圆底；删除指上去变红，提醒这是破坏性操作 */
           <span className="hidden group-hover:flex items-center gap-0.5 shrink-0 -my-1">
-            <button onClick={e => { e.stopPropagation(); onEdit(a); }} title="编辑批注和标签" aria-label="编辑"
+            <button onClick={e => { e.stopPropagation(); onEdit(a); }} title={tr("编辑批注和标签")} aria-label={tr("编辑")}
               className="w-6 h-6 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer
                          text-[#b8b8b8] hover:text-[#fff] hover:bg-[#ffffff1f]">
               <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"
@@ -588,41 +589,41 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
             {/* 二级分享：整份分享时这一条要不要给别人看。整份没分享时不出这颗（本来就谁都看不到） */}
             {shared && (
               <button onClick={e => { e.stopPropagation(); onShareExcluded?.(a, !a.share_excluded); }}
-                title={a.share_excluded ? "这一条现在不分享，点一下分享" : "这一条会分享给别人，点一下不分享"}
-                aria-label={a.share_excluded ? "分享这一条" : "不分享这一条"}
+                title={a.share_excluded ? tr("这一条现在不分享，点一下分享") : tr("这一条会分享给别人，点一下不分享")}
+                aria-label={a.share_excluded ? tr("分享这一条") : tr("不分享这一条")}
                 className="w-6 h-6 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer
                            text-[#b8b8b8] hover:text-[#fff] hover:bg-[#ffffff1f]">
                 <EyeIcon off={!a.share_excluded} />
               </button>
             )}
-            <DeleteButton onConfirm={() => onDelete(a)} title="删除" size={24} icon={13} round />
+            <DeleteButton onConfirm={() => onDelete(a)} title={tr("删除")} size={24} icon={13} round />
           </span>
         ) : (
           <span className="flex items-center gap-1 shrink-0">
           {/* 他人的：隐藏这一条（只影响自己看到的） */}
           <button onClick={e => { e.stopPropagation(); onHide?.(a, !hidden); }}
-            title={hidden ? "取消隐藏" : "隐藏这一条（只是自己不看，不影响对方）"}
+            title={hidden ? tr("取消隐藏") : tr("隐藏这一条（只是自己不看，不影响对方）")}
             className={`${hidden ? "flex" : "hidden group-hover:flex"} w-6 h-6 -my-1 rounded-full items-center justify-center bg-transparent border-none cursor-pointer
                        text-[#b8b8b8] hover:text-[#fff] hover:bg-[#ffffff1f]`}>
             <EyeIcon off={!hidden} />
           </button>
           <button onClick={e => { e.stopPropagation(); onCopy(a); }} disabled={copied}
-            title={copied ? "已在我的笔记里" : "加进我的笔记"}
+            title={copied ? tr("已在我的笔记里") : tr("加进我的笔记")}
             className={`text-[10.5px] px-1.5 rounded border-none shrink-0
               ${copied ? "text-[#7ec8e3] bg-transparent cursor-default"
                        : "text-[#e6e6e6] bg-[#ffffff1a] cursor-pointer hover:bg-[#ffffff33]"}`}>
-            {copied ? "✓ 已添加" : "+ 收藏"}
+            {copied ? tr("✓ 已添加") : tr("+ 收藏")}
           </button>
           </span>
         )}
       </div>
       {k === "ink" ? (
         a.stale || !a.rects ? (
-          <div className="text-[11px] text-[#9a9a9a] font-sans pl-3.5">手写笔迹（其它版本，预览不可用）</div>
+          <div className="text-[11px] text-[#9a9a9a] font-sans pl-3.5">{tr("手写笔迹（其它版本，预览不可用）")}</div>
         ) : <InkThumb a={a} />
       ) : k === "area" ? (
         a.stale ? (
-          <div className="text-[11px] text-[#9a9a9a] font-sans pl-3.5">区域选取（其它版本，缩略图不可用）</div>
+          <div className="text-[11px] text-[#9a9a9a] font-sans pl-3.5">{tr("区域选取（其它版本，缩略图不可用）")}</div>
         ) : <AreaThumb doc={doc} a={a} />
       ) : a.quote && (
         <div className={`text-[11.5px] leading-snug text-[#d8d8d8] font-sans line-clamp-3 pl-3.5
@@ -636,14 +637,14 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
         </div>
       )}
       {k === "note" && a.style?.replies?.length > 0 && (
-        <div className="text-[10.5px] text-[#9a9a9a] font-sans mt-0.5">{a.style.replies.length} 条回复</div>
+        <div className="text-[10.5px] text-[#9a9a9a] font-sans mt-0.5">{tr("{n} 条回复", { n: a.style.replies.length })}</div>
       )}
       {a.tags?.length > 0 && (
         /* 点标签 = 按它筛选（再点一下取消），和 Zotero 侧栏一样 */
         <div className="flex flex-wrap gap-1 mt-1">
           {a.tags.map(t => (
             <button key={t} onClick={e => { e.stopPropagation(); onTag?.(t); }}
-              title={tagOn?.(t) ? "取消按这个标签筛选" : "只看带这个标签的"}
+              title={tagOn?.(t) ? tr("取消按这个标签筛选") : tr("只看带这个标签的")}
               className={`text-[10.5px] font-sans px-1.5 rounded border-none cursor-pointer leading-[18px]
                 ${tagOn?.(t) ? "text-[#10232c] bg-[#7ec8e3]" : "text-[#7ec8e3] bg-[#7ec8e31a] hover:bg-[#7ec8e333]"}`}>
               #{t}
@@ -660,7 +661,7 @@ function AnnRow({ a, mine, author, doc, onGo, onEdit, onDelete, onCopy, copied, 
         </div>
       )}
       {mine && a.source_user_id && (
-        <div className="text-[10px] text-[#9a9a9a] font-sans mt-1">来自他人笔记</div>
+        <div className="text-[10px] text-[#9a9a9a] font-sans mt-1">{tr("来自他人笔记")}</div>
       )}
     </div>
   );
@@ -751,7 +752,7 @@ export function NotesList({
       {/* 头：范围切换 + 可见性。只有两个/三个值，用点按切换而不是下拉（全站规范） */}
       <div className="shrink-0 px-2 py-1.5 border-b border-[#00000040] flex flex-col gap-1.5">
         <div className="flex items-center gap-0.5">
-          {[["mine", `我的 ${mine.length}`], ["others", `他人 ${otherCount}`], ["all", "全部"]].map(([k, label]) => (
+          {[["mine", tr("我的 {n}", { n: mine.length })], ["others", tr("他人 {n}", { n: otherCount })], ["all", tr("全部")]].map(([k, label]) => (
             <button key={k} onClick={() => setScope(k)}
               className={`flex-1 py-1 rounded text-[11px] font-sans border-none cursor-pointer whitespace-nowrap
                 ${scope === k ? "text-[#fff] bg-[#ffffff26] font-bold" : "text-[#b8b8b8] bg-transparent hover:bg-[#ffffff14]"}`}>
@@ -761,18 +762,18 @@ export function NotesList({
         </div>
         {(
           <div className="flex items-center gap-1">
-            <button onClick={onAddPageNote} title={`给第 ${page} 页加一条笔记`}
+            <button onClick={onAddPageNote} title={tr("给第 {n} 页加一条笔记", { n: page })}
               className="flex-1 py-1 rounded text-[11px] font-sans text-[#e6e6e6] bg-[#ffffff1a]
                          border-none cursor-pointer hover:bg-[#ffffff33] whitespace-nowrap">
-              + 第 {page} 页
+              {tr("+ 第 {n} 页", { n: page })}
             </button>
             {/* 公开 / 私有：一眼看出**当前是什么状态**，不是「点了会变成什么」。
                 没登录时笔记只在本机，谈不上公开，不出这颗 */}
             {canShare && <button onClick={() => onVisibility(visibility === "public" ? "private" : "public")}
-              title={visibility === "public" ? "所有人可见，点一下改成仅自己" : "仅自己可见，点一下公开"}
+              title={visibility === "public" ? tr("所有人可见，点一下改成仅自己") : tr("仅自己可见，点一下公开")}
               className={`py-1 px-2 rounded text-[11px] font-sans border-none cursor-pointer whitespace-nowrap
                 ${visibility === "public" ? "text-[#7ec8e3] bg-[#7ec8e31a]" : "text-[#b8b8b8] bg-[#ffffff1a]"}`}>
-              {visibility === "public" ? "公开" : "私有"}
+              {visibility === "public" ? tr("公开") : tr("私有")}
             </button>}
           </div>
         )}
@@ -782,17 +783,17 @@ export function NotesList({
           <div className="flex-1 min-w-0 relative">
             <input value={q} onChange={e => setQ(e.target.value)}
               onKeyDown={e => { e.stopPropagation(); if (e.key === "Escape") setQ(""); }}
-              placeholder="搜索原文、批注、标签"
+              placeholder={tr("搜索原文、批注、标签")}
               className="w-full h-[26px] pl-2 pr-6 rounded bg-[#00000059] border border-[#ffffff26]
                          text-[11.5px] text-[#fff] font-sans outline-none
                          placeholder:text-[#ffffff59] focus:border-[#ffffff66]" />
             {q && (
-              <button onClick={() => setQ("")} title="清空"
+              <button onClick={() => setQ("")} title={tr("清空")}
                 className="absolute right-0.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded text-[11px] leading-none
                            text-[#9a9a9a] bg-transparent border-none cursor-pointer hover:text-[#fff]">✕</button>
             )}
           </div>
-          <button onClick={() => setFilterOpen(v => !v)} title="按颜色 / 类型 / 标签筛选"
+          <button onClick={() => setFilterOpen(v => !v)} title={tr("按颜色 / 类型 / 标签筛选")}
             className={`h-[26px] px-1.5 rounded flex items-center gap-1 text-[11px] font-sans border-none cursor-pointer shrink-0
               ${filterOpen || nFilters ? "text-[#fff] bg-[#ffffff26]" : "text-[#b8b8b8] bg-[#ffffff14] hover:bg-[#ffffff26]"}`}>
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
@@ -835,10 +836,10 @@ export function NotesList({
 
         {active && (
           <div className="flex items-center justify-between text-[10.5px] font-sans text-[#9a9a9a]">
-            <span className="tabular-nums">{shown} / {totalInScope} 条</span>
+            <span className="tabular-nums">{tr("{a} / {b} 条", { a: shown, b: totalInScope })}</span>
             <button onClick={clearAll}
               className="px-1 rounded text-[10.5px] text-[#7ec8e3] bg-transparent border-none cursor-pointer hover:bg-[#ffffff14]">
-              清除筛选
+              {tr("清除筛选")}
             </button>
           </div>
         )}
@@ -861,18 +862,18 @@ export function NotesList({
         ))}
         {showOthers && hiddenCount > 0 && (
           <div className="flex items-center justify-between mx-2 mt-1 text-[10.5px] font-sans text-[#9a9a9a]">
-            <span>已隐藏他人的 {hiddenCount} 条</span>
+            <span>{tr("已隐藏他人的 {n} 条", { n: hiddenCount })}</span>
             <button onClick={() => setShowHidden(v => !v)}
               className="px-1 rounded text-[10.5px] text-[#7ec8e3] bg-transparent border-none cursor-pointer hover:bg-[#ffffff14]">
-              {showHidden ? "收起" : "显示"}
+              {showHidden ? tr("收起") : tr("显示")}
             </button>
           </div>
         )}
         {shown === 0 && (
           <div className="px-2 py-4 text-[11.5px] text-[#b8b8b8] font-sans leading-relaxed">
             {active && totalInScope > 0
-              ? "没有符合条件的标注。"
-              : "还没有笔记。选中正文可以高亮、划线或加批注；左边工具条的框选可以框住图表和公式；也可以直接给当前页记一条。"}
+              ? tr("没有符合条件的标注。")
+              : tr("还没有笔记。选中正文可以高亮、划线或加批注；左边工具条的框选可以框住图表和公式；也可以直接给当前页记一条。")}
           </div>
         )}
       </div>
@@ -903,7 +904,7 @@ function TagInput({ tags, onChange, suggestions }) {
           <span key={x} className="flex items-center gap-0.5 text-[11.5px] font-sans text-[#7ec8e3]
                                    bg-[#7ec8e31a] rounded px-1.5 leading-[22px]">
             #{x}
-            <button onClick={() => onChange(tags.filter(y => y !== x))} title="去掉这个标签"
+            <button onClick={() => onChange(tags.filter(y => y !== x))} title={tr("去掉这个标签")}
               className="text-[11px] leading-none text-[#7ec8e3] bg-transparent border-none cursor-pointer
                          px-0.5 hover:text-[#fff]">✕</button>
           </span>
@@ -920,7 +921,7 @@ function TagInput({ tags, onChange, suggestions }) {
             if (e.key === "Backspace" && !text && tags.length) onChange(tags.slice(0, -1));
           }}
           onBlur={() => commit(text)}
-          placeholder={tags.length ? "" : "加标签（回车确认）"}
+          placeholder={tags.length ? "" : tr("加标签（回车确认）")}
           className="flex-1 min-w-[96px] bg-transparent border-none outline-none py-0.5
                      text-[12.5px] text-[#fff] font-sans placeholder:text-[#ffffff59]" />
       </div>
@@ -949,9 +950,9 @@ export function AnnEditor({ draft, onChange, onSave, onCancel, showTags, tagSugg
   const open = !!draft;
   useEffect(() => { if (open) taRef.current?.focus(); }, [open]);
   if (!draft) return null;
-  const label = draft.kind === "area" ? " · 区域选取"
-    : draft.kind === "underline" ? " · 下划线"
-    : draft.quote ? "" : " · 整页笔记";
+  const label = draft.kind === "area" ? ` · ${tr("区域选取")}`
+    : draft.kind === "underline" ? ` · ${tr("下划线")}`
+    : draft.quote ? "" : ` · ${tr("整页笔记")}`;
   return (
     <div className="absolute inset-0 z-40 flex items-end sm:items-center justify-center
                     bg-black/50 p-3 animate-fade-in"
@@ -959,7 +960,7 @@ export function AnnEditor({ draft, onChange, onSave, onCancel, showTags, tagSugg
       <div className="w-full max-w-[420px] max-h-full overflow-y-auto thin-scrollbar rounded-xl bg-[#323639]
                       border border-[#ffffff26] shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-3">
         <div className="text-[11px] text-[#9a9a9a] font-sans mb-1.5 tabular-nums">
-          第 {draft.page} 页{label}
+          {tr("第 {n} 页", { n: draft.page })}{label}
         </div>
         {draft.kind === "area" && draft.rects?.length === 1 ? (
           <div className="mb-2 max-w-[240px]">
@@ -978,7 +979,7 @@ export function AnnEditor({ draft, onChange, onSave, onCancel, showTags, tagSugg
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onSave(); }
             if (e.key === "Escape") onCancel();
           }}
-          placeholder="写下你的批注…（支持 $公式$）"
+          placeholder={tr("写下你的批注…（支持 $公式$）")}
           className="w-full resize-none rounded-lg bg-[#00000059] border border-[#ffffff33]
                      px-2.5 py-2 text-[13px] text-[#fff] font-sans outline-none
                      placeholder:text-[#ffffff66] focus:border-[#ffffff80]" />
@@ -990,12 +991,12 @@ export function AnnEditor({ draft, onChange, onSave, onCancel, showTags, tagSugg
           <button onClick={onCancel}
             className="h-8 px-3 rounded-full text-[12.5px] font-sans text-[#c8c8c8] whitespace-nowrap
                        bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">
-            取消
+            {tr("取消")}
           </button>
           <button onClick={onSave}
             className="h-8 px-4 rounded-full text-[12.5px] font-bold font-sans text-[#10232c] whitespace-nowrap
                        bg-[#7ec8e3] border-none cursor-pointer hover:bg-[#9ad5ea]">
-            保存
+            {tr("保存")}
           </button>
         </div>
       </div>
@@ -1005,7 +1006,7 @@ export function AnnEditor({ draft, onChange, onSave, onCancel, showTags, tagSugg
 
 /* ── 区域框的线型 / 粗细 ─────────────────────────────────────────────
    默认值存 localStorage（per 设备偏好）；每条框自己的值存在标注的 style 字段 */
-export const DASHES = [["solid", "实线"], ["dashed", "虚线"], ["dotted", "点线"]];
+export const DASHES = [["solid", tr("实线")], ["dashed", tr("虚线")], ["dotted", tr("点线")]];
 export const WIDTHS = [1, 2, 3, 4];
 const AREA_KEY = "rh_area_style";
 export function loadAreaStyle() {
@@ -1026,7 +1027,7 @@ const DashSample = ({ dash, width = 2, color = "#e6e6e6" }) => (
  * - 再点一下才删。3 秒内没点、或者鼠标移开（给 0.8 秒余量），自动回到平时的样子
  * light：放在浅色底上（附注卡片）；round：圆形（列表里的小按钮）
  */
-export function DeleteButton({ onConfirm, title = "删除", size = 24, icon = 14, light = false, round = false }) {
+export function DeleteButton({ onConfirm, title = tr("删除"), size = 24, icon = 14, light = false, round = false }) {
   const [armed, setArmed] = useState(false);
   const timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -1040,7 +1041,7 @@ export function DeleteButton({ onConfirm, title = "删除", size = 24, icon = 14
   const idle = light ? "text-[#666] hover:text-[#d93025] hover:bg-[#d930251a]" : "text-[#c0c0c0] hover:text-[#ff8a8a] hover:bg-[#ff8a8a1f]";
   return (
     <button onClick={click} onMouseLeave={() => { if (armed) disarmIn(800); }} onMouseEnter={() => { if (armed) disarmIn(3000); }}
-      title={armed ? "再点一下删除" : title} aria-label={armed ? "再点一下删除" : title}
+      title={armed ? tr("再点一下删除") : title} aria-label={armed ? tr("再点一下删除") : title}
       className={`${round ? "rounded-full" : "rounded-md"} shrink-0 flex items-center justify-center border-none cursor-pointer transition-colors
         ${armed ? "rh-armed bg-[#d93025] text-[#fff] hover:bg-[#b3261e]" : `bg-transparent ${idle}`}`}
       style={{ width: size, height: size }}>
@@ -1088,7 +1089,7 @@ function StylePicker({ color, dash, width, fill, onColor, onDash, onWidth, onFil
       {onWidth && (
         <div className={row}>
           {WIDTHS.map(w => (
-            <button key={w} onClick={() => onWidth(w)} title={`${w} 像素`} className={opt(width === w)}>
+            <button key={w} onClick={() => onWidth(w)} title={tr("{n} 像素", { n: w })} className={opt(width === w)}>
               <DashSample dash="solid" width={w} color={rgba(color, 1)} />
             </button>
           ))}
@@ -1097,7 +1098,7 @@ function StylePicker({ color, dash, width, fill, onColor, onDash, onWidth, onFil
       {onFill && (
         /* 只有两个值 ⇒ 点按切换，按钮上画的就是效果本身（空心框 / 实心框） */
         <div className={row}>
-          {[[false, "无填充"], [true, "填充"]].map(([v, label]) => (
+          {[[false, tr("无填充")], [true, tr("填充")]].map(([v, label]) => (
             <button key={label} onClick={() => onFill(v)} title={label} className={`${opt(!!fill === v)} gap-1.5 text-[11px] text-[#e6e6e6] font-sans`}>
               <span className="block w-[14px] h-[11px] rounded-[2px]"
                 style={{ border: `1.5px solid ${rgba(color, 1)}`, background: v ? rgba(color, 0.35) : "transparent" }} />
@@ -1173,12 +1174,12 @@ export function AreaStyleMenu({ value, onChange, dir = "right", corner = false }
   const set = (patch) => onChange({ ...value, ...patch });
   return (
     <>
-      <MenuTrigger btnRef={btnRef} open={!!pos} onClick={toggle} title="框选的默认颜色、线型和粗细" dir={dir} corner={corner} />
+      <MenuTrigger btnRef={btnRef} open={!!pos} onClick={toggle} title={tr("框选的默认颜色、线型和粗细")} dir={dir} corner={corner} />
       {/* 216 = 7 个色块（24px + 间距 4px）一排 192 + 左右内边距：原来 200 宽，最后一个色块冒出面板 */}
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
           className="w-[216px] p-2.5 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
-          <div className="text-[11px] text-[#9a9a9a] font-sans mb-1.5">框选默认样式</div>
+          <div className="text-[11px] text-[#9a9a9a] font-sans mb-1.5">{tr("框选默认样式")}</div>
           <StylePicker {...value} onColor={c => set({ color: c })} onDash={d => set({ dash: d })} onWidth={w => set({ width: w })}
             onFill={f => set({ fill: f })} />
         </div>
@@ -1214,19 +1215,19 @@ export function AnnMenu({ pos, a, mine, copied, author, onColor, onStyle, onEdit
           {/* 批注 / 删除：图标按钮（和笔记列表里的同一套：铅笔、垃圾桶），文字放进 title。
               原来是「批注」「删除」两行字，挤在颜色块旁边像两条菜单项。删除要点两下（见 DeleteButton） */}
           <div className="flex flex-col gap-1 items-center">
-            <button onClick={onEdit} title={a.body ? "编辑批注和标签" : "写批注 / 加标签"} aria-label="批注"
+            <button onClick={onEdit} title={a.body ? tr("编辑批注和标签") : tr("写批注 / 加标签")} aria-label={tr("批注")}
               className="w-8 h-8 rounded-md flex items-center justify-center bg-transparent border-none cursor-pointer
                          text-[#d0d0d0] hover:text-[#fff] hover:bg-[#ffffff26]">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"
                 strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
             </button>
-            <DeleteButton onConfirm={onDelete} title="删除这条标注" size={32} icon={16} />
+            <DeleteButton onConfirm={onDelete} title={tr("删除这条标注")} size={32} icon={16} />
           </div>
         </div>
       ) : (
         <div className="flex items-center gap-1">
           {author && <span className="text-[11px] text-[#9a9a9a] font-sans px-1">{author.name}</span>}
-          <button onClick={onCopy} disabled={copied} className={btn}>{copied ? "✓ 已在我的笔记" : "+ 收藏到我的笔记"}</button>
+          <button onClick={onCopy} disabled={copied} className={btn}>{copied ? tr("✓ 已在我的笔记") : tr("+ 收藏到我的笔记")}</button>
           <button onClick={onClose} className={btn}>✕</button>
         </div>
       )}
@@ -1307,7 +1308,7 @@ export function AreaEditBox({ a, viewerEl, onCommit }) {
         border: `${bw}px ${a.style?.dash || "solid"} ${col}`,
         background: a.style?.fill ? rgba(a.color, 0.3) : rgba(a.color, 0.06),
       }}>
-      <div onPointerDown={start("move")} title="拖动移动" style={{ position: "absolute", inset: 0, cursor: "move" }} />
+      <div onPointerDown={start("move")} title={tr("拖动移动")} style={{ position: "absolute", inset: 0, cursor: "move" }} />
       {HANDLES.map(h => (
         <div key={h} onPointerDown={start(h)}
           style={{
@@ -1344,22 +1345,22 @@ export function PenMenu({ value, onChange, dir = "right", corner = false }) {
   const set = (patch) => onChange({ ...value, ...patch });
   return (
     <>
-      <MenuTrigger btnRef={btnRef} open={!!pos} onClick={toggle} title="画笔颜色和粗细" dir={dir} corner={corner} />
+      <MenuTrigger btnRef={btnRef} open={!!pos} onClick={toggle} title={tr("画笔颜色和粗细")} dir={dir} corner={corner} />
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
           className="w-[240px] p-3 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in font-sans">
-          <div className="text-[12.5px] text-[#f2f2f2] font-bold mb-2">颜色</div>
+          <div className="text-[12.5px] text-[#f2f2f2] font-bold mb-2">{tr("颜色")}</div>
           <ColorSwatches value={value.color} onChange={c => set({ color: c })} />
           {/* 预览：一道波浪线，颜色和粗细都是当前选的 */}
           <svg viewBox="0 0 200 44" className="block w-full my-2.5">
             <path d="M8 30 C 40 6, 70 6, 100 22 S 160 38, 192 14" fill="none" stroke={rgba(value.color, 1)}
               strokeWidth={value.width * 1.6} strokeLinecap="round" />
           </svg>
-          <div className="text-[12.5px] text-[#f2f2f2] font-bold mb-1">粗细</div>
+          <div className="text-[12.5px] text-[#f2f2f2] font-bold mb-1">{tr("粗细")}</div>
           <input type="range" min="1" max="12" step="1" value={value.width}
             onChange={e => set({ width: Number(e.target.value) })}
             className="w-full accent-[#7ec8e3] cursor-pointer" />
-          <div className="flex justify-between text-[11px] text-[#9a9a9a]"><span>细</span><span>粗</span></div>
+          <div className="flex justify-between text-[11px] text-[#9a9a9a]"><span>{tr("细")}</span><span>{tr("粗")}</span></div>
         </div>
       )}
     </>
@@ -1447,7 +1448,7 @@ export function TextBoxEditor({ draft, viewerEl, onChange, onDone, onDelete }) {
         className="absolute left-0 bottom-full mb-2 flex items-center gap-0.5 p-1 rounded-lg bg-[#323639] border border-[#ffffff26]
                       shadow-[0_6px_20px_rgba(0,0,0,0.45)] whitespace-nowrap">
         <div className="relative">
-          <button className={tb} onClick={() => setColorOpen(v => !v)} title="文字颜色">
+          <button className={tb} onClick={() => setColorOpen(v => !v)} title={tr("文字颜色")}>
             <span className="flex flex-col items-center leading-none">
               <span className="text-[14px] font-semibold">A</span>
               <span className="block w-4 h-[3px] rounded mt-0.5" style={{ background: rgba(draft.color, 1) }} />
@@ -1462,31 +1463,31 @@ export function TextBoxEditor({ draft, viewerEl, onChange, onDone, onDelete }) {
           )}
         </div>
         {sep}
-        <button className={tb} onClick={() => setStyle({ size: Math.min(72, st.size + 1) })} disabled={st.size >= 72} title={`增大字号（${st.size}pt）`}>
+        <button className={tb} onClick={() => setStyle({ size: Math.min(72, st.size + 1) })} disabled={st.size >= 72} title={tr("增大字号（{n}pt）", { n: st.size })}>
           <span className="text-[15px]">A</span><span className="text-[10px] -mt-2">ˆ</span>
         </button>
-        <button className={tb} onClick={() => setStyle({ size: Math.max(6, st.size - 1) })} disabled={st.size <= 6} title={`减小字号（${st.size}pt）`}>
+        <button className={tb} onClick={() => setStyle({ size: Math.max(6, st.size - 1) })} disabled={st.size <= 6} title={tr("减小字号（{n}pt）", { n: st.size })}>
           <span className="text-[15px]">A</span><span className="text-[10px] -mt-1">ˇ</span>
         </button>
         {sep}
-        <button className={tb} onClick={() => setStyle({ spacing: Math.min(10, +(st.spacing + 0.5).toFixed(1)) })} disabled={st.spacing >= 10} title="加大字间距">
+        <button className={tb} onClick={() => setStyle({ spacing: Math.min(10, +(st.spacing + 0.5).toFixed(1)) })} disabled={st.spacing >= 10} title={tr("加大字间距")}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l3.5-9L12 13M6.3 10h4.4" /><path d="M13 4l3 9 3-9" /><path d="M3 19h18M3 19l2.5-2M3 19l2.5 2M21 19l-2.5-2M21 19l-2.5 2" /></svg>
         </button>
-        <button className={tb} onClick={() => setStyle({ spacing: Math.max(-2, +(st.spacing - 0.5).toFixed(1)) })} disabled={st.spacing <= -2} title="减小字间距">
+        <button className={tb} onClick={() => setStyle({ spacing: Math.max(-2, +(st.spacing - 0.5).toFixed(1)) })} disabled={st.spacing <= -2} title={tr("减小字间距")}>
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 13l3.5-9L12 13M6.3 10h4.4" /><path d="M13 4l3 9 3-9" /><path d="M3 19h6M9 19l-2.5-2M9 19l-2.5 2M21 19h-6M15 19l2.5-2M15 19l2.5 2" /></svg>
         </button>
         {sep}
         {/* 和别处的删除一样要点两下（DeleteButton） */}
-        <DeleteButton onConfirm={onDelete} title="删除这个文本框" size={32} icon={16} />
+        <DeleteButton onConfirm={onDelete} title={tr("删除这个文本框")} size={32} icon={16} />
       </div>
 
       {/* 框本身：左边拖动把手、右边拉宽度的圆钮 */}
       <div className="relative" style={{ outline: "1.5px dashed #2f7bd8", outlineOffset: 1, borderRadius: 2 }}>
-        <div onPointerDown={drag("move")} title="拖动移动"
+        <div onPointerDown={drag("move")} title={tr("拖动移动")}
           className="absolute top-0 bottom-0 -left-3 w-3 flex items-center justify-center bg-[#2f7bd8] rounded-l cursor-move">
           <svg viewBox="0 0 6 12" width="5" height="10" fill="#fff"><circle cx="1.5" cy="2" r="1" /><circle cx="4.5" cy="2" r="1" /><circle cx="1.5" cy="6" r="1" /><circle cx="4.5" cy="6" r="1" /><circle cx="1.5" cy="10" r="1" /><circle cx="4.5" cy="10" r="1" /></svg>
         </div>
-        <textarea ref={taRef} value={draft.body} rows={1} placeholder="在此处开始键入…"
+        <textarea ref={taRef} value={draft.body} rows={1} placeholder={tr("在此处开始键入…")}
           onChange={e => onChange({ body: e.target.value })}
           onKeyDown={e => e.stopPropagation()}
           className="block w-full resize-none overflow-hidden bg-[#ffffffd9] border-none outline-none m-0 placeholder:text-[#9aa0a6]"
@@ -1494,7 +1495,7 @@ export function TextBoxEditor({ draft, viewerEl, onChange, onDone, onDelete }) {
             font: `${st.size * k}px/1.3 ${TEXT_FONT}`, letterSpacing: `${st.spacing * k}px`,
             color: rgba(draft.color, 1), padding: "2px 4px", boxSizing: "border-box",
           }} />
-        <div onPointerDown={drag("width")} title="拖动调整宽度"
+        <div onPointerDown={drag("width")} title={tr("拖动调整宽度")}
           className="absolute top-1/2 -right-[7px] w-3 h-3 -translate-y-1/2 rounded-full bg-[#fff] border-2 border-[#2f7bd8] cursor-ew-resize" />
       </div>
     </div>
@@ -1510,7 +1511,7 @@ const fmtTime = (iso) => {
   const d = new Date(iso);
   if (Number.isNaN(+d)) return "";
   const hm = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return d.toDateString() === new Date().toDateString() ? hm : `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+  return d.toDateString() === new Date().toDateString() ? hm : tr("{m}月{d}日 {hm}", { m: d.getMonth() + 1, d: d.getDate(), hm });
 };
 
 export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
@@ -1553,7 +1554,7 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
   const post = () => {
     const t = reply.trim();
     if (!t) return;
-    onChange({ replies: [...replies, { id: crypto.randomUUID(), name: draft.me || "我", at: new Date().toISOString(), text: t }] });
+    onChange({ replies: [...replies, { id: crypto.randomUUID(), name: draft.me || tr("我"), at: new Date().toISOString(), text: t }] });
     setReply("");
   };
   const ib = "w-6 h-6 rounded flex items-center justify-center bg-transparent border-none cursor-pointer text-[#666] hover:bg-[#0000000f] hover:text-[#222]";
@@ -1571,17 +1572,17 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
                  border: `1.5px solid ${rgba(draft.color, 1)}` }}
         className="rh-selbar font-sans rounded-lg bg-[#f6f6f6] shadow-[0_6px_20px_rgba(0,0,0,0.3)] text-[#222]">
         <div className="flex items-center gap-1.5 pl-3 pr-1.5 pt-2 pb-1">
-          <span className="text-[13px] font-bold truncate">{draft.author || "我"}</span>
+          <span className="text-[13px] font-bold truncate">{draft.author || tr("我")}</span>
           <span className="text-[11.5px] text-[#888] shrink-0">{fmtTime(draft.at)}</span>
           <span className="flex-1" />
-          {mine && draft.id && <DeleteButton onConfirm={onDelete} title="删除这条附注（连同回复）" size={24} icon={14} light />}
-          <button onClick={onDone} title="关闭（Esc）" className={ib}>
+          {mine && draft.id && <DeleteButton onConfirm={onDelete} title={tr("删除这条附注（连同回复）")} size={24} icon={14} light />}
+          <button onClick={onDone} title={tr("关闭（Esc）")} className={ib}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
         </div>
         <div className="px-3 pb-2">
           {mine ? (
-            <textarea ref={bodyRef} value={draft.body} rows={1} placeholder="添加附注…"
+            <textarea ref={bodyRef} value={draft.body} rows={1} placeholder={tr("添加附注…")}
               onChange={e => onChange({ body: e.target.value })}
               className="w-full resize-none bg-transparent border-none outline-none text-[13px] leading-[1.5] text-[#222] p-0 font-sans placeholder:text-[#999]" />
           ) : (
@@ -1596,8 +1597,8 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
                     <span className="text-[11px] text-[#888] shrink-0">{fmtTime(r.at)}</span>
                     <span className="flex-1" />
                     {mine && (
-                      <button onClick={() => onChange({ replies: replies.filter(x => x.id !== r.id) })} title="删除这条回复"
-                        className="hidden group-hover:block text-[11px] text-[#b44] bg-transparent border-none cursor-pointer px-1">删除</button>
+                      <button onClick={() => onChange({ replies: replies.filter(x => x.id !== r.id) })} title={tr("删除这条回复")}
+                        className="hidden group-hover:block text-[11px] text-[#b44] bg-transparent border-none cursor-pointer px-1">{tr("删除")}</button>
                     )}
                   </div>
                   <div className="text-[12.5px] leading-[1.5] whitespace-pre-wrap break-words">{r.text}</div>
@@ -1606,19 +1607,19 @@ export function NotePopup({ draft, viewerEl, onChange, onDone, onDelete }) {
             </div>
           )}
           {mine && (
-            <div className="mt-2 pt-2 border-t border-[#0000001a]" title="图标颜色">
+            <div className="mt-2 pt-2 border-t border-[#0000001a]" title={tr("图标颜色")}>
               <ColorSwatches light value={draft.color} onChange={c => onChange({ color: c })} />
             </div>
           )}
           {mine && (draft.body.trim() || replies.length > 0) && (
             <div className="mt-2">
-              <input ref={replyRef} value={reply} onChange={e => setReply(e.target.value)} placeholder="添加回复…"
+              <input ref={replyRef} value={reply} onChange={e => setReply(e.target.value)} placeholder={tr("添加回复…")}
                 onKeyDown={e => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); post(); } }}
                 className="w-full h-8 px-2 rounded-md bg-[#fff] border border-[#d0d0d0] text-[12.5px] text-[#222] outline-none focus:border-[#7a9cc6] font-sans" />
               <div className="flex justify-end mt-1.5">
                 <button onClick={post} disabled={!reply.trim()}
                   className="h-7 px-3 rounded-md text-[12px] border-none cursor-pointer font-sans bg-[#2f6fbf] text-[#fff] disabled:bg-[#e2e2e2] disabled:text-[#9a9a9a] disabled:cursor-default">
-                  发布
+                  {tr("发布")}
                 </button>
               </div>
             </div>

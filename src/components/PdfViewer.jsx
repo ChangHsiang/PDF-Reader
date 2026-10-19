@@ -36,6 +36,7 @@ import { tokenize, trimSelection, buildTextLayer } from "../lib/pdfium/textLayer
 import { clientToNorm, clientRectToNorm, normRectToClient, pageSizePx, localPlacement } from "../lib/pdfium/rotate";
 import { EventBus, PdfiumViewer, PdfiumDocument, makeLinkService } from "../lib/pdfium/viewer";
 import { Avatar, Icon } from "./bits";
+import { t as tr } from "../lib/i18n";
 
 /**
  * 阅读器本体。从网站的 PdfViewer 搬过来，改了三处：
@@ -123,7 +124,7 @@ function OutlineNode({ node, depth, onGo, defaultOpen = false }) {
     <>
       <div className="flex items-start" style={{ paddingLeft: 2 + depth * 10 }}>
         {kids ? (
-          <button onClick={() => setOpen(v => !v)} title={open ? "收起" : "展开"}
+          <button onClick={() => setOpen(v => !v)} title={open ? tr("收起") : tr("展开")}
             className="w-[18px] h-[22px] shrink-0 flex items-center justify-center rounded
                        bg-transparent border-none cursor-pointer text-[#9a9a9a] hover:text-[#fff] hover:bg-[#ffffff1a]">
             <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor"
@@ -136,7 +137,7 @@ function OutlineNode({ node, depth, onGo, defaultOpen = false }) {
         <button onClick={() => onGo(node.dest)}
           className="flex-1 min-w-0 text-left py-1.5 px-1 rounded text-[13px] leading-snug font-sans
                      text-[#d8d8d8] bg-transparent border-none cursor-pointer hover:text-[#fff] hover:bg-[#ffffff1a]">
-          {node.title || "（无标题）"}
+          {node.title || tr("（无标题）")}
         </button>
       </div>
       {open && kids?.map((c, i) => <OutlineNode key={i} node={c} depth={depth + 1} onGo={onGo} />)}
@@ -148,19 +149,19 @@ function OutlineNode({ node, depth, onGo, defaultOpen = false }) {
 function SyncBadge({ uid, state, pending, onLogin, onSync, manual }) {
   if (!uid) {
     return (
-      <button onClick={onLogin} title="笔记目前只存在这台电脑上。登录 ResearchHub 后会和网站同步"
+      <button onClick={onLogin} title={tr("笔记目前只存在这台电脑上。登录 ResearchHub 后会和网站同步")}
         className="h-7 px-2 rounded-md text-[11.5px] text-[#ffcf7a] bg-[#ffcf7a14] border-none cursor-pointer hover:bg-[#ffcf7a26] shrink-0">
-        仅本机 · 登录同步
+        {tr("仅本机 · 登录同步")}
       </button>
     );
   }
   // 手动同步：有改动时显示「点此同步」，不自动推
-  const label = state.busy ? "同步中…" : state.error ? `未同步${pending ? ` ${pending}` : ""}`
-    : pending ? (manual ? `${pending} 条未同步 · 同步` : `待同步 ${pending}`) : manual ? "手动同步" : "已同步";
+  const label = state.busy ? tr("同步中…") : state.error ? `${tr("未同步")}${pending ? ` ${pending}` : ""}`
+    : pending ? (manual ? tr("{n} 条未同步 · 同步", { n: pending }) : tr("待同步 {n}", { n: pending })) : manual ? tr("手动同步") : tr("已同步");
   const color = state.error ? "text-[#ff9a9a]" : state.busy || pending ? "text-[#c8c8c8]" : "text-[#7ee3a0]";
   return (
     <button onClick={onSync} disabled={state.busy}
-      title={state.error ? `${state.error}，点一下重试` : manual ? "这篇是手动同步（设置 → 同步），点一下和 ResearchHub 同步" : "和 ResearchHub 同步（点一下立即同步）"}
+      title={state.error ? tr("{err}，点一下重试", { err: state.error }) : manual ? tr("这篇是手动同步（设置 → 同步），点一下和 ResearchHub 同步") : tr("和 ResearchHub 同步（点一下立即同步）")}
       className={`h-7 px-2 rounded-md text-[11.5px] bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a] shrink-0 ${color}`}>
       {label}
     </button>
@@ -446,7 +447,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
   const visibleAnns = useMemo(() => {
     const list = [];
     /* 指上去的浮卡（附注、框选、高亮、下划线）要显示作者名：给这些挂一个 _author（手写、文本框没有浮卡，不用复制） */
-    const myName = me?.name || "我";
+    const myName = me?.name || tr("我");
     if (scope !== "others") list.push(...mineView.map(a => (a.rects?.length && a.kind !== "ink" && a.kind !== "text" ? { ...a, _author: myName } : a)));
     if (scope !== "mine") othersView.forEach(o => list.push(...o.annotations.filter(a => !hiddenOthers.has(a.id)).map(a => (a.rects?.length && a.kind !== "ink" && a.kind !== "text"
       ? { ...a, _author: o.author?.name || o.author?.username || "" } : a))));
@@ -515,7 +516,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
         let buf = takePrefetched(url);
         if (!buf) {
           const res = await fetch(url, /^https?:/.test(url) && !/arxiv\.org\//.test(url) ? { credentials: "include" } : undefined);
-          if (!res.ok) throw new Error(`下载 PDF 失败（${res.status}）`);
+          if (!res.ok) throw new Error(tr("下载 PDF 失败（{s}）", { s: res.status }));
           buf = await res.arrayBuffer();
         }
         const bytes = new Uint8Array(buf.slice(0));       // 留一份原始字节给「下载」用（buf 会被转交给 Worker）
@@ -535,7 +536,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
         handle.outline().then(o => { if (alive) setOutline(o || []); }).catch(() => { if (alive) setOutline([]); });
       } catch (e) {
         console.error("[PdfViewer]", url, e);
-        if (alive) setErr(e?.message || "加载失败");
+        if (alive) setErr(e?.message || tr("加载失败"));
       }
     })();
     return () => {
@@ -676,7 +677,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
     setSelfCite("loading");
     const c = await lookupSelf();
     setSelfCite(s => (s === "loading" ? c || "none" : s));      // 等的时候已经把框关了：不再弹
-    if (!c) showToast("没查到这篇论文的引用信息", false);
+    if (!c) showToast(tr("没查到这篇论文的引用信息"), false);
   };
   /* 「显示标注」（点标题的下拉里开关）：关掉时 PDF 文件里自带的注释不画（两栏都重画），我们自己的标注层由 .rh-hide-annots 藏起来 */
   const showAnnots = settings.showAnnots !== false;
@@ -1050,7 +1051,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
     const n = {
       id: a.id, paper_key: a.paper_key || paperKey, page: a.page, rect: { x: r.x, y: r.y },
       body: a.body || "", color: a.color, replies: a.style?.replies || [], at: a.created_at || a.updated_at,
-      author: a._author || (isMine ? me?.name || "我" : ""), mine: isMine, me: me?.name || "我",
+      author: a._author || (isMine ? me?.name || tr("我") : ""), mine: isMine, me: me?.name || tr("我"),
     };
     setActiveId(a.id);
     setNoteEdit({ ...n, orig: JSON.stringify([n.body, n.replies, n.color, n.rect]) });
@@ -1121,7 +1122,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
       hideGhost();
       // 图标中心落在点的位置（就是虚线框的位置），整个图标留在页面里
       const { x, y } = where(pageEl, e);
-      const name = me?.name || "我";
+      const name = me?.name || tr("我");
       setEditPane(P.key);
       setNoteEdit({
         id: null, paper_key: paperKey, page: Number(pageEl.dataset.pageNumber), rect: { x, y },
@@ -1942,7 +1943,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
   };
   /** 原文件 + 我的标注写成标准 PDF 注释（lib/exportPdf）→ { bytes, count, miss } */
   const annotatedBytes = async (anns) => {
-    const { items, skipped } = toPdfAnnotations(anns, doc.pages, me?.name || "我");
+    const { items, skipped } = toPdfAnnotations(anns, doc.pages, me?.name || tr("我"));
     const bytes = await doc.getData();
     const { bytes: out, failed } = await sharedPdfium().exportAnnotated(bytes.buffer, items);
     return { bytes: out, count: items.length - failed, miss: skipped + failed };
@@ -1950,14 +1951,14 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
   const downloadAnnotated = async () => {
     if (!doc) return;
     const anns = mineView.filter(a => !a.deleted);
-    if (!anns.length) { showToast("这篇还没有我的标注，可以直接下载原文件", false); return; }
-    showToast("正在生成带标注的 PDF…");
+    if (!anns.length) { showToast(tr("这篇还没有我的标注，可以直接下载原文件"), false); return; }
+    showToast(tr("正在生成带标注的 PDF…"));
     try {
       const { bytes, count, miss } = await annotatedBytes(anns);
       saveBytes(bytes, `${fileBase()} (annotated).pdf`);
-      showToast(`已导出 ${count} 条标注${miss ? `，${miss} 条没导出（做于这篇的其它版本、位置对不上，或格式不支持）` : ""}`);
+      showToast(miss ? tr("已导出 {n} 条标注，{m} 条没导出（做于这篇的其它版本、位置对不上，或格式不支持）", { n: count, m: miss }) : tr("已导出 {n} 条标注", { n: count }));
     } catch (e) {
-      showToast(`导出失败：${e?.message || e}`, false);
+      showToast(tr("导出失败：{err}", { err: e?.message || e }), false);
     }
   };
   /* 打印（标题下拉 / Ctrl+P）：把要印的 PDF 放进一个看不见的 iframe，交给浏览器自带的 PDF 阅读器打印 ——
@@ -1968,7 +1969,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
   const printPdf = async () => {
     if (!doc) return;
     const anns = settings.showAnnots === false ? [] : mineView.filter(a => !a.deleted);
-    showToast(anns.length ? "正在准备打印（带我的标注）…" : "正在准备打印…");
+    showToast(anns.length ? tr("正在准备打印（带我的标注）…") : tr("正在准备打印…"));
     try {
       const bytes = anns.length ? (await annotatedBytes(anns)).bytes : await doc.getData();
       printFrame.current?.remove();
@@ -1977,13 +1978,13 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
       f.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none";
       f.onload = () => setTimeout(() => {
         try { f.contentWindow.focus(); f.contentWindow.print(); setToast(null); }
-        catch (e) { showToast(`打印失败：${e?.message || e}`, false); }
+        catch (e) { showToast(tr("打印失败：{err}", { err: e?.message || e }), false); }
       }, 400);                   // PDF 阅读器加载完文档要一点时间，太早调 print 会印出空白
       document.body.appendChild(f);
       printFrame.current = f;
       setTimeout(() => URL.revokeObjectURL(href), 120_000);
     } catch (e) {
-      showToast(`打印失败：${e?.message || e}`, false);
+      showToast(tr("打印失败：{err}", { err: e?.message || e }), false);
     }
   };
   const printRef = useRef(printPdf);
@@ -2005,24 +2006,24 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
       <div className="h-10 shrink-0 flex items-center gap-1 px-1.5 bg-[#323639] border-b border-[#00000040]">
         {/* 三段：左边侧栏开关 + 标题（同 Edge / Chrome 的阅读器），中间翻页和缩放（左右两段等宽，所以它真的居中），右边工具 */}
         <div className="flex-1 basis-0 min-w-0 flex items-center gap-1">
-          <TBtn onClick={() => setSideOpen(v => !v)} title="目录 / 缩略图 / 笔记" active={sideOpen}><Icon d={IconSidebar} /></TBtn>
+          <TBtn onClick={() => setSideOpen(v => !v)} title={tr("目录 / 缩略图 / 笔记")} active={sideOpen}><Icon d={IconSidebar} /></TBtn>
           {/* 点标题弹下拉：文档属性、用浏览器自带的阅读器打开（同 Edge 的「⋯」菜单里那两项） */}
           <TitleMenu label={title || localName || paperKey.replace(/^arxiv:/, "arXiv:")} full={title} disabled={!doc}
             onProps={() => setPropsOpen(true)} onRaw={openRaw}
             onDownload={download} onDownloadAnnotated={downloadAnnotated} onPrint={printPdf}
             showAnnots={settings.showAnnots !== false} onToggleAnnots={() => setSettings({ showAnnots: settings.showAnnots === false })} />
           <TBtn onClick={openSelfCite} disabled={!doc || selfCite === "loading" || selfCite === "none"}
-            title={selfCite === "none" ? "没查到这篇论文的引用信息" : "引用"}>
+            title={selfCite === "none" ? tr("没查到这篇论文的引用信息") : tr("引用")}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
           </TBtn>
           <SelfBookmark key={paperKey} uid={uid} disabled={!doc} lookup={lookupSelf} onLogin={onLogin} toast={showToast} />
         </div>
         <div className="shrink-0 flex items-center gap-1">
-        <TBtn onClick={() => goPage(vPage - 1)} title="上一页" disabled={vPage <= 1}><Icon d={IconUp} /></TBtn>
-        <TBtn onClick={() => goPage(vPage + 1)} title="下一页" disabled={vPage >= total}><Icon d={IconDown} /></TBtn>
+        <TBtn onClick={() => goPage(vPage - 1)} title={tr("上一页")} disabled={vPage <= 1}><Icon d={IconUp} /></TBtn>
+        <TBtn onClick={() => goPage(vPage + 1)} title={tr("下一页")} disabled={vPage >= total}><Icon d={IconDown} /></TBtn>
         {doc ? (
           <div className="flex items-center gap-1 px-0.5 shrink-0 text-[11.5px] font-sans tabular-nums">
-            <input value={pageInput} inputMode="numeric" aria-label="跳转到指定页" title="输入页码后回车跳转"
+            <input value={pageInput} inputMode="numeric" aria-label={tr("跳转到指定页")} title={tr("输入页码后回车跳转")}
               style={{ width: `${String(total).length + 1}ch` }}
               onFocus={(e) => { editingRef.current = true; e.target.select(); }}
               onBlur={() => { editingRef.current = false; commitPageInput(); }}
@@ -2038,11 +2039,11 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
           </div>
         ) : <span className="text-[11.5px] text-[#e6e6e6] font-sans px-1 shrink-0">…</span>}
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
-        <TBtn onClick={() => stepZoom(-1)} title="缩小" disabled={vZoom <= ZOOMS[0]}><Icon d={IconMinus} /></TBtn>
-        <TBtn onClick={() => stepZoom(1)} title="放大" disabled={vZoom >= ZOOMS[ZOOMS.length - 1]}><Icon d={IconPlus} /></TBtn>
+        <TBtn onClick={() => stepZoom(-1)} title={tr("缩小")} disabled={vZoom <= ZOOMS[0]}><Icon d={IconMinus} /></TBtn>
+        <TBtn onClick={() => stepZoom(1)} title={tr("放大")} disabled={vZoom >= ZOOMS[ZOOMS.length - 1]}><Icon d={IconPlus} /></TBtn>
         {/* 缩放比例可直接输入（同页码框：本地 state，滚轮 / 按钮改了倍数时不在输入就跟着变） */}
         <div className="flex items-center shrink-0 text-[11.5px] font-sans tabular-nums text-[#e6e6e6]">
-          <input value={zoomInput} aria-label="缩放比例" title="输入百分比后回车"
+          <input value={zoomInput} aria-label={tr("缩放比例")} title={tr("输入百分比后回车")}
             style={{ width: "4ch" }}
             onFocus={(e) => { zoomEditingRef.current = true; e.target.select(); }}
             onBlur={() => { zoomEditingRef.current = false; commitZoomInput(); }}
@@ -2058,32 +2059,32 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
         </div>
         <ZoomMenu zoom={vZoom} mode={vMode} onPick={setScale} />
         <TBtn onClick={() => rotateBtn(1)} disabled={!doc}
-          title={rotMode === "page" ? `顺时针旋转第 ${vPage} 页（Ctrl+]）` : `顺时针旋转所有页（Ctrl+]）`}>
+          title={rotMode === "page" ? tr("顺时针旋转第 {n} 页（Ctrl+]）", { n: vPage }) : tr("顺时针旋转所有页（Ctrl+]）")}>
           <Icon d={rotMode === "page" ? IconRotateOne : IconRotate} /></TBtn>
         <RotateMenu disabled={!doc} mode={rotMode} onMode={setRotMode}
           rotated={!!rotation || Object.keys(pageRot).length > 0} onReset={resetAllRot} />
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
-        <TBtn onClick={() => runHistory("undo")} title="撤销（Ctrl+Z）" disabled={!hist.canUndo}><Icon d={IconUndo} /></TBtn>
-        <TBtn onClick={() => runHistory("redo")} title="恢复（Ctrl+Y）" disabled={!hist.canRedo}><Icon d={IconRedo} /></TBtn>
+        <TBtn onClick={() => runHistory("undo")} title={tr("撤销（Ctrl+Z）")} disabled={!hist.canUndo}><Icon d={IconUndo} /></TBtn>
+        <TBtn onClick={() => runHistory("redo")} title={tr("恢复（Ctrl+Y）")} disabled={!hist.canRedo}><Icon d={IconRedo} /></TBtn>
         </div>
 
         <div className="flex-1 basis-0 min-w-0 flex items-center justify-end gap-1">
 
-        <TBtn onClick={() => (findOpen ? closeFind() : openFind())} title="搜索（Ctrl+F）" active={findOpen}><Icon d={IconSearch} /></TBtn>
-        <TBtn onClick={toggleSplit} title={splitOpen ? "关闭分屏" : "分屏：再开一个阅读区看同一篇（各自滚动）"}
+        <TBtn onClick={() => (findOpen ? closeFind() : openFind())} title={tr("搜索（Ctrl+F）")} active={findOpen}><Icon d={IconSearch} /></TBtn>
+        <TBtn onClick={toggleSplit} title={splitOpen ? tr("关闭分屏") : tr("分屏：再开一个阅读区看同一篇（各自滚动）")}
           active={splitOpen} disabled={!doc}><Icon d={splitDir === "v" ? IconSplitV : IconSplit} /></TBtn>
         <SplitMenu mode={splitOpen ? splitDir : "off"} disabled={!doc} onPick={setSplitMode} />
-        <TBtn onClick={enterFullscreen} title="全屏阅读（Esc 退出）" disabled={!doc}><Icon d={IconFull} /></TBtn>
+        <TBtn onClick={enterFullscreen} title={tr("全屏阅读（Esc 退出）")} disabled={!doc}><Icon d={IconFull} /></TBtn>
         <div className="h-4 border-l border-[#ffffff26] mx-0.5 shrink-0" />
         <div className="relative">
-          <TBtn onClick={() => setSettingsOpen(true)} title={upd.show ? `设置（有新版本 v${upd.latest.version}）` : "设置"}><Icon d={IconGear} /></TBtn>
+          <TBtn onClick={() => setSettingsOpen(true)} title={upd.show ? tr("设置（有新版本 v{v}）", { v: upd.latest.version }) : tr("设置")}><Icon d={IconGear} /></TBtn>
           {/* 有新版本（没被忽略）：设置按钮上一个小红点 */}
           {upd.show && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#ff5c5c] pointer-events-none" />}
         </div>
         <SyncBadge uid={uid} state={sync} pending={pendingCount} onLogin={onLogin} onSync={runSync} manual={!autoSync} />
         {commentKey && (
           <div className="relative">
-            <TBtn onClick={() => setRightOpen(v => !v)} active={rightOpen} title="论文评论（和 ResearchHub 网站互通）">
+            <TBtn onClick={() => setRightOpen(v => !v)} active={rightOpen} title={tr("论文评论（和 ResearchHub 网站互通）")}>
               <Icon d={IconChat} />
             </TBtn>
             {/* 评论数：角标挂在右上角，位数多了按钮也不变宽；过百显示 99+ */}
@@ -2112,7 +2113,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
                    boxShadow: sideOpen ? "6px 0 24px rgba(0,0,0,0.35)" : "none" }}>
           {/* 竖排图标切 tab */}
           <div className="w-11 shrink-0 flex flex-col items-center gap-1 pt-12 border-r border-[#00000033]">
-            {[["thumbs", "缩略图", IconThumbs], ["outline", "目录", IconOutline], ["notes", "笔记", IconNotes]].map(([k, label, icon]) => (
+            {[["thumbs", tr("缩略图"), IconThumbs], ["outline", tr("目录"), IconOutline], ["notes", tr("笔记"), IconNotes]].map(([k, label, icon]) => (
               <button key={k} onClick={() => setSideTab(k)} title={label}
                 className={`relative w-9 h-9 rounded-md flex items-center justify-center border-none cursor-pointer
                   ${sideTab === k ? "text-[#fff] bg-[#ffffff1f]" : "text-[#b8b8b8] bg-transparent hover:bg-[#ffffff14] hover:text-[#fff]"}`}>
@@ -2129,9 +2130,9 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="h-11 shrink-0 flex items-center justify-between pl-3 pr-1.5">
               <span className="text-[15px] text-[#fff] font-bold font-sans">
-                {{ thumbs: "缩略图", outline: "目录", notes: "笔记" }[sideTab]}
+                {{ thumbs: tr("缩略图"), outline: tr("目录"), notes: tr("笔记") }[sideTab]}
               </span>
-              <button onClick={() => setSideOpen(false)} title="收起"
+              <button onClick={() => setSideOpen(false)} title={tr("收起")}
                 className="w-8 h-8 rounded-md flex items-center justify-center bg-transparent border-none cursor-pointer text-[#c8c8c8] hover:bg-[#ffffff1a]">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
               </button>
@@ -2141,8 +2142,8 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
             ) : (
               <div className="flex-1 overflow-y-auto overscroll-contain thin-scrollbar py-1 pr-1">
                 {sideTab === "outline" ? (
-                  outline === null ? <div className="px-3 py-3 text-[12px] text-[#b8b8b8] font-sans">读取中…</div>
-                  : outline.length === 0 ? <div className="px-3 py-3 text-[12px] text-[#b8b8b8] font-sans leading-relaxed">这份 PDF 没有内置章节目录</div>
+                  outline === null ? <div className="px-3 py-3 text-[12px] text-[#b8b8b8] font-sans">{tr("读取中…")}</div>
+                  : outline.length === 0 ? <div className="px-3 py-3 text-[12px] text-[#b8b8b8] font-sans leading-relaxed">{tr("这份 PDF 没有内置章节目录")}</div>
                   /* 只有一个顶层节点（多半是论文标题）时直接展开，不然一打开目录就只看到一行 */
                   : outline.map((n, i) => <OutlineNode key={i} node={n} depth={0} onGo={goDest} defaultOpen={outline.length === 1} />)
                 ) : <Thumbs doc={doc} total={total} page={vPage} onGo={goPage} />}
@@ -2202,22 +2203,22 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
                             shadow-[0_8px_24px_rgba(0,0,0,0.45)] text-[12.5px] font-sans text-[#e6e6e6] animate-fade-in">
               <div className="flex items-start gap-2">
                 <div className="flex-1">
-                  <div className="font-bold text-[#fff]">PDF-Reader 有新版本 v{upd.latest.version}</div>
-                  <div className="text-[11.5px] text-[#9a9a9a] mt-0.5">当前 v{upd.current}。下载后解压覆盖原来的文件夹，在扩展管理页点刷新；<b className="text-[#ffb36b]">别点「移除」</b>，会删掉笔记。升级前建议先在设置 → 数据里导出备份</div>
+                  <div className="font-bold text-[#fff]">{tr("PDF-Reader 有新版本 v{v}", { v: upd.latest.version })}</div>
+                  <div className="text-[11.5px] text-[#9a9a9a] mt-0.5">{tr("当前 v{v}。下载后解压覆盖原来的文件夹，在扩展管理页点刷新；", { v: upd.current })}<b className="text-[#ffb36b]">{tr("别点「移除」")}</b>{tr("，会删掉笔记。升级前建议先在设置 → 数据里导出备份")}</div>
                 </div>
                 <button onClick={() => { setUpdLater(true); try { sessionStorage.setItem("rh_upd_later", upd.latest.version); } catch { /* 无痕 */ } }}
-                  title="先不提示（下次打开还会提示）"
+                  title={tr("先不提示（下次打开还会提示）")}
                   className="w-6 h-6 -mt-0.5 -mr-1 rounded-md text-[#c8c8c8] bg-transparent border-none cursor-pointer hover:bg-[#ffffff26]">✕</button>
               </div>
               <div className="flex items-center gap-1.5 mt-2.5">
                 <button onClick={() => openTab(upd.latest.zip)}
-                  className="h-7 px-3 rounded-full text-[12px] font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea] border-none cursor-pointer">下载</button>
+                  className="h-7 px-3 rounded-full text-[12px] font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea] border-none cursor-pointer">{tr("下载")}</button>
                 <button onClick={() => openTab(upd.latest.url)}
                   className="h-7 px-3 rounded-full text-[12px] text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a] cursor-pointer"
-                  style={{ border: "1px solid #ffffff33" }}>更新说明</button>
+                  style={{ border: "1px solid #ffffff33" }}>{tr("更新说明")}</button>
                 <span className="flex-1" />
                 <button onClick={upd.ignore}
-                  className="h-7 px-2 rounded-md text-[12px] text-[#9a9a9a] bg-transparent border-none cursor-pointer hover:text-[#e6e6e6] hover:bg-[#ffffff1a]">忽略此版本</button>
+                  className="h-7 px-2 rounded-md text-[12px] text-[#9a9a9a] bg-transparent border-none cursor-pointer hover:text-[#e6e6e6] hover:bg-[#ffffff1a]">{tr("忽略此版本")}</button>
               </div>
             </div>
           )}
@@ -2229,17 +2230,17 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
                             text-[13px] font-sans text-[#ddd] pointer-events-none">
               {err ? (
                 <>
-                  <div>PDF 加载失败</div>
+                  <div>{tr("PDF 加载失败")}</div>
                   <div className="text-[11.5px] text-[#ffffff80] max-w-[80%] text-center break-words leading-relaxed">{err}</div>
-                  <button onClick={openRaw} className="text-[#7ec8e3] underline pointer-events-auto bg-transparent border-none cursor-pointer text-[13px]">用浏览器自带阅读器打开 ↗</button>
+                  <button onClick={openRaw} className="text-[#7ec8e3] underline pointer-events-auto bg-transparent border-none cursor-pointer text-[13px]">{tr("用浏览器自带阅读器打开 ↗")}</button>
                 </>
-              ) : "正在加载 PDF…"}
+              ) : tr("正在加载 PDF…")}
             </div>
           )}
         </div>
         {splitOpen && doc && (
           <>
-            <div onPointerDown={dragSplit} title={splitDir === "v" ? "拖动调整高度" : "拖动调整宽度"}
+            <div onPointerDown={dragSplit} title={splitDir === "v" ? tr("拖动调整高度") : tr("拖动调整宽度")}
               className={`shrink-0 bg-[#2a2c2e] hover:bg-[#4a90d9] active:bg-[#4a90d9] transition-colors touch-none
                 ${splitDir === "v" ? "h-1.5 cursor-row-resize" : "w-1.5 cursor-col-resize"}`} />
             <div ref={splitBoxRef} className="relative shrink-0 min-w-0 min-h-0" style={splitDir === "v" ? { height: `${splitFrac * 100}%` } : { width: `${splitFrac * 100}%` }}
@@ -2266,7 +2267,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
             <div ref={tbRef}
               className={`pointer-events-auto flex ${tb.horiz ? "flex-row items-center" : "flex-col items-stretch"} gap-0.5 p-1
                           rounded-xl bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.4)]`}>
-              <div onPointerDown={dragTb} title="拖动工具条"
+              <div onPointerDown={dragTb} title={tr("拖动工具条")}
                 className={`flex items-center justify-center rounded-md cursor-move text-[#9a9a9a] hover:text-[#fff] hover:bg-[#ffffff1a]
                             touch-none ${tb.horiz ? "w-3 self-stretch" : "h-3"}`}>
                 <svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor" style={{ transform: tb.horiz ? "rotate(90deg)" : "none" }}>
@@ -2276,7 +2277,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
               {/* 横竖切换放在抓手后面第一个：工具条按左上角定位，切换后它基本还在原处，鼠标不用追着找
                   （放最后的话一切换就跑到别处去了）。图标画的是切过去之后的样子 */}
               <div className="flex items-center justify-center">
-                <TBtn onClick={() => setTb(p => ({ ...p, horiz: !p.horiz }))} title={tb.horiz ? "改成竖排" : "改成横排"}>
+                <TBtn onClick={() => setTb(p => ({ ...p, horiz: !p.horiz }))} title={tb.horiz ? tr("改成竖排") : tr("改成横排")}>
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
                     {tb.horiz ? <rect x="8" y="3" width="8" height="18" rx="2" /> : <rect x="3" y="8" width="18" height="8" rx="2" />}
                   </svg>
@@ -2284,13 +2285,13 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
               </div>
               <div className={tb.horiz ? "self-stretch border-l border-[#ffffff26] mx-0.5 my-1" : "border-t border-[#ffffff26] mx-1 my-0.5"} />
               {[
-                ["area", IconArea, "退出框选（Esc）", "框选区域：拖一个框标注图、表或公式",
+                ["area", IconArea, tr("退出框选（Esc）"), tr("框选区域：拖一个框标注图、表或公式"),
                   <AreaStyleMenu key="m" value={areaStyle} onChange={setAreaStyle} dir={tb.horiz ? "down" : "right"} corner={!tb.horiz} />],
-                ["pen", IconPen, "退出画笔（Esc）", "画笔：在页面上手写（Ctrl+Z 撤销上一笔）",
+                ["pen", IconPen, tr("退出画笔（Esc）"), tr("画笔：在页面上手写（Ctrl+Z 撤销上一笔）"),
                   <PenMenu key="m" value={penStyle} onChange={setPenStyle} dir={tb.horiz ? "down" : "right"} corner={!tb.horiz} />],
-                ["eraser", IconEraser, "退出橡皮擦（Esc）", "橡皮擦：擦掉手写笔迹（高亮和框不受影响）"],
-                ["textbox", IconTextBox, "退出添加文本（Esc）", "添加文本：点页面放一个文本框"],
-                ["note", IconNote, "退出添加附注（Esc）", "添加附注：点页面放一个附注"],
+                ["eraser", IconEraser, tr("退出橡皮擦（Esc）"), tr("橡皮擦：擦掉手写笔迹（高亮和框不受影响）")],
+                ["textbox", IconTextBox, tr("退出添加文本（Esc）"), tr("添加文本：点页面放一个文本框")],
+                ["note", IconNote, tr("退出添加附注（Esc）"), tr("添加附注：点页面放一个附注")],
               ].map(([k, icon, offTitle, onTitle, menu]) => (
                 <div key={k} className={tb.horiz ? "flex items-center" : "relative flex justify-center"}>
                   <TBtn onClick={() => { clearSel(); setTool(t => (t === k ? "text" : k)); }}
@@ -2309,7 +2310,7 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
                             bg-[#323639] border border-[#ffffff1f] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
               <div className="flex items-center gap-1">
               <div className="relative">
-                <input ref={findInputRef} autoFocus value={query} placeholder="在文档中搜索"
+                <input ref={findInputRef} autoFocus value={query} placeholder={tr("在文档中搜索")}
                   onChange={e => { setQuery(e.target.value); queryRef.current = e.target.value; runFind(e.target.value, false); if (!e.target.value) setFindCount(null); }}
                   onKeyDown={e => {
                     e.stopPropagation();
@@ -2325,18 +2326,18 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
                   </span>
                 )}
               </div>
-              <TBtn onClick={() => query && runFind(query, true, true)} title="上一处（Shift+Enter）" disabled={!findCount?.total}>
+              <TBtn onClick={() => query && runFind(query, true, true)} title={tr("上一处（Shift+Enter）")} disabled={!findCount?.total}>
                 <Icon d={IconUp} size={17} />
               </TBtn>
-              <TBtn onClick={() => query && runFind(query, true)} title="下一处（Enter）" disabled={!findCount?.total}>
+              <TBtn onClick={() => query && runFind(query, true)} title={tr("下一处（Enter）")} disabled={!findCount?.total}>
                 <Icon d={IconDown} size={17} />
               </TBtn>
-              <TBtn onClick={closeFind} title="关闭（Esc）">
+              <TBtn onClick={closeFind} title={tr("关闭（Esc）")}>
                 <Icon d={<><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></>} size={16} />
               </TBtn>
               </div>
               <div className="flex items-center gap-4 px-0.5 text-[12.5px] font-sans text-[#e6e6e6]">
-                {[["highlightAll", "高亮所有"], ["caseSensitive", "区分大小写"], ["entireWord", "整词"]].map(([k, label]) => (
+                {[["highlightAll", tr("高亮所有")], ["caseSensitive", tr("区分大小写")], ["entireWord", tr("整词")]].map(([k, label]) => (
                   <label key={k} className="flex items-center gap-1.5 cursor-pointer select-none">
                     <input type="checkbox" checked={findOpts[k]} onChange={() => setFindOpt(k)}
                       className="w-3.5 h-3.5 m-0 cursor-pointer accent-[#7ec8e3]" />
@@ -2352,8 +2353,8 @@ export default function PdfViewer({ url, paperKey: givenKey, latestKey, localNam
           <aside className="relative w-[340px] shrink-0 overflow-hidden bg-[#3c4043] border-l border-[#00000040] flex flex-col">
             {/* overflow-hidden：删除确认的遮罩（absolute inset-0）淡入时往下滑 4px，不裁掉的话整页会闪一下滚动条 */}
             <div className="shrink-0 h-8 flex items-center justify-between pl-3 pr-1 border-b border-[#00000040]">
-              <span className="text-[12px] text-[#fff] font-bold font-sans">论文评论</span>
-              <button onClick={() => setRightOpen(false)} title="收起"
+              <span className="text-[12px] text-[#fff] font-bold font-sans">{tr("论文评论")}</span>
+              <button onClick={() => setRightOpen(false)} title={tr("收起")}
                 className="w-7 h-7 rounded-md text-[#c8c8c8] bg-transparent border-none cursor-pointer hover:bg-[#ffffff26]">✕</button>
             </div>
             <div className="flex-1 min-h-0">
@@ -2400,7 +2401,7 @@ function Thumbs({ doc, total, page, onGo }) {
           img.src = URL.createObjectURL(blob);
           urls.current.push(img.src);
           img.style.cssText = "width:100%;height:auto;display:block";
-          img.alt = `第 ${n} 页`;
+          img.alt = tr("第 {n} 页", { n });
           en.target.replaceChildren(img);
         } catch { done.current.delete(n); }
       }
@@ -2446,7 +2447,7 @@ function TransMark({ anchors, viewerEl }) {
    取代原来那颗「适应宽度 / 适应高度」来回切的按钮。当前是哪一项就打勾：
    自动倍数看 pdf.js 给的 presetValue，固定比例看数值 */
 const ZOOM_PRESETS = [0.5, 0.75, 1, 1.25, 1.5];
-const FIT_MODES = [["page-actual", "实际大小"], ["page-fit", "适合页面"], ["page-width", "适合宽度"]];
+const FIT_MODES = [["page-actual", tr("实际大小")], ["page-fit", tr("适合页面")], ["page-width", tr("适合宽度")]];
 
 function ZoomMenu({ zoom, mode, onPick }) {
   const [pos, setPos] = useState(null);
@@ -2480,7 +2481,7 @@ function ZoomMenu({ zoom, mode, onPick }) {
   );
   return (
     <>
-      <button ref={btnRef} onClick={toggle} title="缩放比例 / 适合页面 / 适合宽度"
+      <button ref={btnRef} onClick={toggle} title={tr("缩放比例 / 适合页面 / 适合宽度")}
         className={`h-7 w-5 -ml-1 rounded-md flex items-center justify-center border-none cursor-pointer shrink-0
           ${pos ? "text-[#fff] bg-[#ffffff33]" : "text-[#c8c8c8] bg-transparent hover:bg-[#ffffff26]"}`}>
         <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="3"
@@ -2664,11 +2665,11 @@ function SplitMenu({ mode, disabled, onPick }) {
     const r = btnRef.current.getBoundingClientRect();
     setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 60, window.innerWidth - 170)) });
   };
-  const items = [["off", "不分屏", <rect key="r" x="3" y="4" width="18" height="16" rx="2" />],
-                 ["h", "左右分屏", IconSplit], ["v", "上下分屏", IconSplitV]];
+  const items = [["off", tr("不分屏"), <rect key="r" x="3" y="4" width="18" height="16" rx="2" />],
+                 ["h", tr("左右分屏"), IconSplit], ["v", tr("上下分屏"), IconSplitV]];
   return (
     <>
-      <button ref={btnRef} onClick={toggle} disabled={disabled} title="分屏方式"
+      <button ref={btnRef} onClick={toggle} disabled={disabled} title={tr("分屏方式")}
         className={`h-7 w-4 -ml-1 rounded-md flex items-center justify-center border-none shrink-0
           ${disabled ? "text-[#ffffff4d] bg-transparent cursor-not-allowed"
             : pos ? "text-[#fff] bg-[#ffffff33] cursor-pointer" : "text-[#c8c8c8] bg-transparent hover:bg-[#ffffff26] cursor-pointer"}`}>
@@ -2715,13 +2716,13 @@ function RotateMenu({ disabled, mode, onMode, rotated, onReset }) {
     setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left - 40, window.innerWidth - 140)) });
   };
   const groups = [
-    [[() => onMode("all"), "所有页", IconRotate, "", false, mode === "all"],
-     [() => onMode("page"), "当前页", IconRotateOne, "", false, mode === "page"]],
-    [[onReset, "复原", <><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" /><polyline points="3.5 3.5 3.5 8.5 8.5 8.5" /></>, "", !rotated]],
+    [[() => onMode("all"), tr("所有页"), IconRotate, "", false, mode === "all"],
+     [() => onMode("page"), tr("当前页"), IconRotateOne, "", false, mode === "page"]],
+    [[onReset, tr("复原"), <><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1" /><polyline points="3.5 3.5 3.5 8.5 8.5 8.5" /></>, "", !rotated]],
   ];
   return (
     <>
-      <button ref={btnRef} onClick={toggle} disabled={disabled} title="旋转方式"
+      <button ref={btnRef} onClick={toggle} disabled={disabled} title={tr("旋转方式")}
         className={`h-7 w-4 -ml-1 rounded-md flex items-center justify-center border-none shrink-0
           ${disabled ? "text-[#ffffff4d] bg-transparent cursor-not-allowed"
             : pos ? "text-[#fff] bg-[#ffffff33] cursor-pointer" : "text-[#c8c8c8] bg-transparent hover:bg-[#ffffff26] cursor-pointer"}`}>
@@ -2777,7 +2778,7 @@ function AccountMenu({ me, email, onLibrary }) {
   const item = "w-full h-8 flex items-center gap-2 pl-2.5 pr-4 rounded-md text-[13px] font-sans text-[#e6e6e6] bg-transparent border-none cursor-pointer hover:bg-[#ffffff1a] text-left whitespace-nowrap";
   return (
     <>
-      <button ref={btnRef} onClick={toggle} title={`已登录：${me.name}`}
+      <button ref={btnRef} onClick={toggle} title={tr("已登录：{name}", { name: me.name })}
         className={`ml-0.5 shrink-0 p-0.5 rounded-full border-none cursor-pointer ${pos ? "bg-[#ffffff33]" : "bg-transparent hover:bg-[#ffffff26]"}`}>
         <Avatar name={me.name} url={me.avatar_url} size={22} />
       </button>
@@ -2794,12 +2795,12 @@ function AccountMenu({ me, email, onLibrary }) {
           <div className="my-1 border-t border-[#ffffff1f]" />
           <button className={item} onClick={() => { setPos(null); onLibrary(); }}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z" /></svg>
-            文献收藏
+            {tr("文献收藏")}
           </button>
           <button className={`${item} ${armed ? "!text-[#ff8a80] !bg-[#ff8a801a]" : ""}`}
             onClick={() => { if (!armed) { setArmed(true); return; } setPos(null); chrome.runtime.sendMessage({ type: "auth:signOut" }); }}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-            {armed ? "再点一下退出" : "退出登录"}
+            {armed ? tr("再点一下退出") : tr("退出登录")}
           </button>
         </div>
       )}
@@ -2827,15 +2828,15 @@ function TitleMenu({ label, full, disabled, onProps, onRaw, onDownload, onDownlo
     setPos({ top: r.bottom + 6, left: Math.max(8, r.left) });
   };
   const items = [
-    [onDownload, "下载", IconDownload],
-    [onDownloadAnnotated, "下载带我的标注的 PDF", <><path d="M12 4v11" /><polyline points="7 10 12 15 17 10" /><path d="M5 20h6" /><path d="M15 20l4-4 2 2-4 4h-2z" /></>],
-    [onPrint, "打印", <><polyline points="6 9 6 3 18 3 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="7" /></>, "Ctrl+P"],
+    [onDownload, tr("下载"), IconDownload],
+    [onDownloadAnnotated, tr("下载带我的标注的 PDF"), <><path d="M12 4v11" /><polyline points="7 10 12 15 17 10" /><path d="M5 20h6" /><path d="M15 20l4-4 2 2-4 4h-2z" /></>],
+    [onPrint, tr("打印"), <><polyline points="6 9 6 3 18 3 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="7" /></>, "Ctrl+P"],
     null,
     // 显示 / 隐藏所有标注（同 Chrome 阅读器「⋮」里的「注释」；存在设置的 showAnnots 里）：前面打勾表示开着
-    [onToggleAnnots, "显示标注", null, null, showAnnots],
+    [onToggleAnnots, tr("显示标注"), null, null, showAnnots],
     null,
-    [onRaw, "用浏览器自带的阅读器打开", IconOpen],
-    [onProps, "文档属性", <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" /></>],
+    [onRaw, tr("用浏览器自带的阅读器打开"), IconOpen],
+    [onProps, tr("文档属性"), <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" /></>],
   ];
   return (
     <>
@@ -2907,10 +2908,10 @@ function SelfBookmark({ uid, disabled, lookup, onLogin, toast }) {
     if (pos) { setPos(null); return; }
     let c = card;
     if (c === undefined) { setBusy(true); c = await lookupRef.current().catch(() => null); setCard(c || null); setBusy(false); }
-    if (!c) { toast?.("没查到这篇论文的信息，不能收藏", false); return; }
+    if (!c) { toast?.(tr("没查到这篇论文的信息，不能收藏"), false); return; }
     if (row) {
       setBusy(true);
-      if (await removeBookmark(row.id)) { setRow(null); toast?.("已取消收藏"); } else toast?.("取消收藏失败", false);
+      if (await removeBookmark(row.id)) { setRow(null); toast?.(tr("已取消收藏")); } else toast?.(tr("取消收藏失败"), false);
       setBusy(false);
       return;
     }
@@ -2920,8 +2921,8 @@ function SelfBookmark({ uid, disabled, lookup, onLogin, toast }) {
   };
   const pick = async (colId, name) => {
     setBusy(true);
-    try { setRow(await saveBookmark(card, colId)); setPos(null); toast?.(`已收藏到「${name}」`); }
-    catch (e) { toast?.(e.message || "收藏失败", false); }
+    try { setRow(await saveBookmark(card, colId)); setPos(null); toast?.(tr("已收藏到「{name}」", { name })); }
+    catch (e) { toast?.(e.message || tr("收藏失败"), false); }
     setBusy(false);
   };
   const saved = !!row;
@@ -2929,7 +2930,7 @@ function SelfBookmark({ uid, disabled, lookup, onLogin, toast }) {
   return (
     <>
       <button ref={btnRef} onClick={click} disabled={disabled || card === null}
-        title={!uid ? "收藏（登录 ResearchHub 后可用）" : card === null ? "没查到这篇论文的信息，不能收藏" : saved ? "已收藏（点一下取消）" : "收藏"}
+        title={!uid ? tr("收藏（登录 ResearchHub 后可用）") : card === null ? tr("没查到这篇论文的信息，不能收藏") : saved ? tr("已收藏（点一下取消）") : tr("收藏")}
         className={`h-7 min-w-7 px-1 rounded-md flex items-center justify-center border-none shrink-0
           ${disabled || card === null ? "text-[#ffffff4d] bg-transparent cursor-not-allowed"
             : saved ? "text-[#fbbc04] bg-transparent hover:bg-[#ffffff26] cursor-pointer"
@@ -2941,11 +2942,11 @@ function SelfBookmark({ uid, disabled, lookup, onLogin, toast }) {
       {pos && (
         <div ref={panelRef} style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 60 }}
           className="w-max min-w-[200px] max-w-[280px] p-1 rounded-lg bg-[#323639] border border-[#ffffff26] shadow-[0_6px_20px_rgba(0,0,0,0.45)] animate-fade-in">
-          <div className="px-2.5 py-1 text-[11px] text-[#9a9a9a] font-sans">收藏到…</div>
+          <div className="px-2.5 py-1 text-[11px] text-[#9a9a9a] font-sans">{tr("收藏到…")}</div>
           <div className="max-h-[260px] overflow-y-auto thin-scrollbar">
-            <button className={item} disabled={busy} onClick={() => pick(null, "未分类")}>
+            <button className={item} disabled={busy} onClick={() => pick(null, tr("未分类"))}>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
-              默认（未分类）
+              {tr("默认（未分类）")}
             </button>
             {cols?.length > 0 && <div className="my-1 border-t border-[#ffffff1f]" />}
             {cols === null && <div className="px-2.5 py-1.5 text-[12px] text-[#8a8a8a]">…</div>}

@@ -9,6 +9,7 @@ import { MathText } from "./bits";
 import { openAlexMeta, relatedFor, allVersions } from "../lib/openalex";
 import { useSession } from "../lib/useSession";
 import { findBookmark, saveBookmark, removeBookmark, listCollections } from "../lib/library";
+import { t } from "../lib/i18n";
 
 /**
  * 文献卡片：点正文里的引用号弹出（样式参照 Google 学术 PDF 阅读器）。
@@ -108,9 +109,9 @@ export default function RefCard({ pos, group, current, entries, arxivBase, onJum
   const hasFigs = Array.isArray(figs) && figs.length > 0;
   /* 「图片」页签拿不到图时为什么是灰的（指上去看得到）：只出现在能拿到图的文献上的话，
      用户分不清是没这个功能还是坏了（踩过：「没有摘要/图片那一行」） */
-  const figWhy = !curCard?.arxiv ? "这篇不在 arXiv 上，拿不到插图"
-    : figs === "loading" ? "正在从 arXiv 取插图…"
-    : Array.isArray(figs) && !figs.length ? "arXiv 的网页版里没有可用的插图（有的图转换时没转出来）" : "";
+  const figWhy = !curCard?.arxiv ? t("这篇不在 arXiv 上，拿不到插图")
+    : figs === "loading" ? t("正在从 arXiv 取插图…")
+    : Array.isArray(figs) && !figs.length ? t("arXiv 的网页版里没有可用的插图（有的图转换时没转出来）") : "";
 
   const bodyRef = useRef(null);
   /* 列表还在路上时别让卡片先缩成一行「加载中…」再撑开（踩过：「所有版本」打开时高度跳两下）：
@@ -159,15 +160,15 @@ export default function RefCard({ pos, group, current, entries, arxivBase, onJum
         {pages.length > 1 && (
           <>
             <span className="text-[12.5px] text-[#5f6368] tabular-nums mx-1">{idx + 1} / {pages.length}</span>
-            <button className={navBtn} disabled={idx === 0} onClick={() => setIdx(i => i - 1)} title="上一篇（←）">
+            <button className={navBtn} disabled={idx === 0} onClick={() => setIdx(i => i - 1)} title={t("上一篇（←）")}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg>
             </button>
-            <button className={navBtn} disabled={idx >= pages.length - 1} onClick={() => setIdx(i => i + 1)} title="下一篇（→）">
+            <button className={navBtn} disabled={idx >= pages.length - 1} onClick={() => setIdx(i => i + 1)} title={t("下一篇（→）")}>
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="9 18 15 12 9 6" /></svg>
             </button>
           </>
         )}
-        <button className={navBtn} onClick={onClose} title="关闭（Esc）">
+        <button className={navBtn} onClick={onClose} title={t("关闭（Esc）")}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
         </button>
       </div>
@@ -195,7 +196,7 @@ export default function RefCard({ pos, group, current, entries, arxivBase, onJum
             {(
               /* 摘要 / 图片 两个页签（同学术搜索 PDF 阅读器的文献卡片）。一直显示；拿不到图时「图片」是灰的，title 里写原因 */
               <div className="flex items-center gap-4 mt-2 border-b border-[#e8eaed]">
-                {[["abs", "摘要"], ["figs", hasFigs ? `图片 (${figs.length})` : figs === "error" ? "图片（加载失败）" : figs === "loading" ? "图片…" : "图片"]].map(([k, label]) => (
+                {[["abs", t("摘要")], ["figs", hasFigs ? t("图片 ({n})", { n: figs.length }) : figs === "error" ? t("图片（加载失败）") : figs === "loading" ? t("图片…") : t("图片")]].map(([k, label]) => (
                   <button key={k} onClick={() => setTab(k)} title={k === "figs" ? figWhy : undefined}
                     disabled={k === "figs" && !hasFigs && figs !== "error"}
                     className={`h-8 px-0.5 -mb-px bg-transparent border-0 border-b-2 border-solid cursor-pointer text-[13px] disabled:cursor-default disabled:text-[#9aa0a6]
@@ -211,8 +212,8 @@ export default function RefCard({ pos, group, current, entries, arxivBase, onJum
             <div style={{ minHeight: PANEL_H, display: "flow-root" }}>   {/* flow-root：里面两种内容的上外边距不一样（8 / 10px），不包住的话会穿出去，两边差 2px */}
             {tab === "figs" && figs === "error" ? (
               <div className="text-[12.5px] text-[#5f6368] mt-2 leading-relaxed">
-                没能从 arXiv 取到这篇的网页版（网络慢或连不上）。
-                <button onClick={() => setFigTry(t => t + 1)} className={act}>重试</button>
+                {t("没能从 arXiv 取到这篇的网页版（网络慢或连不上）。")}
+                <button onClick={() => setFigTry(t => t + 1)} className={act}>{t("重试")}</button>
               </div>
             ) : tab === "figs" && Array.isArray(figs) && figs.length > 0 ? (
               <FigureView figs={figs} onOpen={setLightbox} />
@@ -223,27 +224,27 @@ export default function RefCard({ pos, group, current, entries, arxivBase, onJum
                     <MathText text={c.abstract} />
                   </div>
                 ) : (
-                  <div className="text-[12.5px] text-[#9aa0a6] mt-2">没有查到摘要</div>
+                  <div className="text-[12.5px] text-[#9aa0a6] mt-2">{t("没有查到摘要")}</div>
                 )}
                 {c.abstract && c.abstract.length > 320 && (
-                  <button onClick={() => setExpanded(v => !v)} className={`${act} mt-1`}>{expanded ? "收起" : "展开"}</button>
+                  <button onClick={() => setExpanded(v => !v)} className={`${act} mt-1`}>{expanded ? t("收起") : t("展开")}</button>
                 )}
               </>
             )}
             </div>
             <div className="flex items-center gap-4 flex-wrap mt-2.5">
-              <button onClick={() => setCiteOpen(true)} className={act} title="GB/T 7714 / MLA / APA，可导出 BibTeX 等">
+              <button onClick={() => setCiteOpen(true)} className={act} title={t("GB/T 7714 / MLA / APA，可导出 BibTeX 等")}>
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" /></svg>
-                引用
+                {t("引用")}
               </button>
               {c.citations != null && (
                 /* 点过去是「引用了这篇的文献」列表：INSPIRE / Semantic Scholar 各自的页面；
                    Crossref 来的没有这种页面，退回 Google 学术搜这篇 */
                 <a href={c.citesUrl || `https://scholar.google.com/scholar?q=${encodeURIComponent(googleQ)}`}
-                  target="_blank" rel="noopener noreferrer" className={act}>被引用次数：{c.citations}</a>
+                  target="_blank" rel="noopener noreferrer" className={act}>{t("被引用次数：{n}", { n: c.citations })}</a>
               )}
-              {(c.arxiv || c.doi) && <button onClick={() => openSub("related")} className={act}>相关文章</button>}
-              {oa?.versions > 0 && <button onClick={() => openSub("versions")} className={act}>所有 {oa.versions} 个版本</button>}
+              {(c.arxiv || c.doi) && <button onClick={() => openSub("related")} className={act}>{t("相关文章")}</button>}
+              {oa?.versions > 0 && <button onClick={() => openSub("versions")} className={act}>{t("所有 {n} 个版本", { n: oa.versions })}</button>}
               <span className="flex-1" />
               {(c.arxiv || c.doi) && <BookmarkButton key={c.arxiv || c.doi} card={c} act={act} />}
               <span className="text-[11px] text-[#9aa0a6]">{c.source}</span>
@@ -252,7 +253,7 @@ export default function RefCard({ pos, group, current, entries, arxivBase, onJum
         ) : (
           /* 查不到：同学术搜索，只摆出参考文献原文（带编号），下面两颗按钮 */
           <div className="text-[13.5px] leading-relaxed text-[#202124]">
-            {page.entry?.text || "没有从 PDF 里读出这条参考文献。"}
+            {page.entry?.text || t("没有从 PDF 里读出这条参考文献。")}
           </div>
         )}
       </div>
@@ -262,21 +263,21 @@ export default function RefCard({ pos, group, current, entries, arxivBase, onJum
           <button onClick={() => onOpenArxiv(c.arxiv)} className={pill(true)}>[PDF] arxiv.org</button>
         ) : c?.pdfUrl ? (
           <a href={c.pdfUrl} target="_blank" rel="noopener noreferrer" className={`${pill(true)} no-underline`}>
-            [PDF] {(() => { try { return new URL(c.pdfUrl).hostname.replace(/^www\./, ""); } catch { return "原文"; } })()}
+            [PDF] {(() => { try { return new URL(c.pdfUrl).hostname.replace(/^www\./, ""); } catch { return t("原文"); } })()}
           </a>
         ) : !page.loading && googleQ ? (
           <a href={`https://www.google.com/search?q=${encodeURIComponent(googleQ)}`} target="_blank" rel="noopener noreferrer"
             className={`${pill(false)} no-underline`}>
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-            在 Google 中搜索
+            {t("在 Google 中搜索")}
           </a>
         ) : null}
         {!page.loading && googleQ && (
           <a href={`https://scholar.google.com/scholar?q=${encodeURIComponent(googleQ)}`} target="_blank" rel="noopener noreferrer"
-            className={`${pill(false)} no-underline`}>Google 学术</a>
+            className={`${pill(false)} no-underline`}>{t("Google 学术")}</a>
         )}
         {page.entry && (
-          <button onClick={() => onJump(page.entry)} className={pill(false)}>在参考文献中查看</button>
+          <button onClick={() => onJump(page.entry)} className={pill(false)}>{t("在参考文献中查看")}</button>
         )}
       </div>
 
@@ -311,12 +312,12 @@ function FigImg({ src, alt, className, onLoad }) {
   if (state === "fail") {
     return (
       <span onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTries(t => t + 1); }}
-        className="text-[11.5px] text-[#9aa0a6] cursor-pointer hover:text-[#1a0dab] px-2 text-center">图片加载失败，点击重试</span>
+        className="text-[11.5px] text-[#9aa0a6] cursor-pointer hover:text-[#1a0dab] px-2 text-center">{t("图片加载失败，点击重试")}</span>
     );
   }
   return (
     <>
-      {state !== "ok" && <span className="text-[11.5px] text-[#9aa0a6] px-2">加载中…</span>}
+      {state !== "ok" && <span className="text-[11.5px] text-[#9aa0a6] px-2">{t("加载中…")}</span>}
       <img src={url} alt={alt} referrerPolicy="no-referrer" onLoad={() => { setState("ok"); onLoad?.(url); }} onError={onError}
         className={className} style={state === "ok" ? undefined : { position: "absolute", width: 1, height: 1, opacity: 0 }} />
     </>
@@ -362,11 +363,11 @@ function FigureView({ figs, onOpen }) {
     <div ref={stripRef} className="flex gap-2 overflow-x-auto mt-2.5 pb-2" onScroll={leave}
       style={{ scrollbarWidth: "thin", scrollbarColor: "#c4c7c5 transparent" }}>
       {figs.map((f, i) => (
-        <button key={f.key || i} onClick={() => { leave(); onOpen(i); }} aria-label={`图 ${i + 1}`}
+        <button key={f.key || i} onClick={() => { leave(); onOpen(i); }} aria-label={t("图 {n}", { n: i + 1 })}
           onMouseEnter={enter(i)} onMouseLeave={leave}
           className="shrink-0 w-[124px] h-[86px] rounded-lg border border-[#dadce0] overflow-hidden cursor-zoom-in p-1
                      bg-[#fff] hover:border-[#1a73e8] transition-colors flex items-center justify-center">
-          <FigImg src={f.url} alt={`图 ${i + 1}`} className="w-full h-full object-contain" onLoad={(u) => { loaded.current[i] = u; }} />
+          <FigImg src={f.url} alt={t("图 {n}", { n: i + 1 })} className="w-full h-full object-contain" onLoad={(u) => { loaded.current[i] = u; }} />
         </button>
       ))}
       {peek && figs[peek.i] && <FigPeek src={loaded.current[peek.i] || figs[peek.i].url} n={peek.i + 1} total={figs.length} rect={peek.rect} />}
@@ -384,10 +385,10 @@ function FigPeek({ src, n, total, rect }) {
     <div style={{ position: "fixed", left, width: PEEK_W, zIndex: 80, pointerEvents: "none", ...style }}
       className="rounded-xl bg-[#fff] border border-[#dadce0] shadow-[0_8px_28px_rgba(0,0,0,0.22)] overflow-hidden animate-fade-in">
       <div className="flex items-center justify-center p-2" style={{ height: PEEK_H }}>
-        <img src={src} alt={`图 ${n}`} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain" />
+        <img src={src} alt={t("图 {n}", { n })} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain" />
       </div>
       <div className="px-3 py-1.5 border-t border-[#f1f3f4] text-[11.5px] text-[#5f6368] font-sans flex justify-between">
-        <span>图 {n}</span><span className="text-[#9aa0a6]">{n} / {total}</span>
+        <span>{t("图 {n}", { n })}</span><span className="text-[#9aa0a6]">{n} / {total}</span>
       </div>
     </div>,
     document.body,
@@ -404,7 +405,7 @@ const Bar = ({ w, h = "h-3", tone = "bg-[#e8eaed]" }) => (
 );
 function CardSkeleton() {
   return (
-    <div className="animate-pulse" aria-label="正在查找这篇文献">
+    <div className="animate-pulse" aria-label={t("正在查找这篇文献")}>
       {/* 标题行和真的一样是行内元素（真的标题是 <a>，直接放在正文里），行盒高度才一致 */}
       <span className="text-[15px] leading-snug">
         <span className="inline-block align-middle h-4 rounded bg-[#e8eaed]" style={{ width: "78%" }} />{"​"}
@@ -449,14 +450,14 @@ function SubList({ view, onBack, onOpenArxiv }) {
       {/* 标题栏：左边一颗圆形「返回」（和卡片顶上的翻页 / 关闭同一种按钮），标题加粗，条数放成灰色小标签，
           下面一道分隔线。原来是一行蓝色的「← 返回」文字链接，看着像正文里的链接、不像按钮 */}
       <div className="flex items-center gap-1.5 -mx-1 mb-1.5 pb-2 border-b border-[#e8eaed]">
-        <button onClick={onBack} title="返回文献信息" aria-label="返回"
+        <button onClick={onBack} title={t("返回文献信息")} aria-label={t("返回")}
           className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-[#f1f3f4] border-none cursor-pointer
                      text-[#3c4043] hover:bg-[#e3e5e8] active:bg-[#d7dade] transition-colors">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2"
             strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
         </button>
         <span className="text-[14px] text-[#202124] font-semibold ml-1">
-          {view.kind === "related" ? "相关文章" : "所有版本"}
+          {view.kind === "related" ? t("相关文章") : t("所有版本")}
         </span>
         {count > 0 && (
           <span className="text-[11.5px] text-[#5f6368] bg-[#f1f3f4] rounded-full px-2 leading-[20px] tabular-nums">{count}</span>
@@ -479,24 +480,24 @@ function SubList({ view, onBack, onOpenArxiv }) {
             </div>
           ))
         ) : (
-          <div className="text-[13px] text-[#5f6368] py-2">加载中…</div>
+          <div className="text-[13px] text-[#5f6368] py-2">{t("加载中…")}</div>
         )
       ) : view.items.length === 0 ? (
         <div className="text-[13px] text-[#5f6368] py-2 leading-relaxed">
-          {view.kind === "related" ? "Semantic Scholar 没有给这篇推荐相关文章（较早的文献常常没有）。" : "没有查到"}
+          {view.kind === "related" ? t("Semantic Scholar 没有给这篇推荐相关文章（较早的文献常常没有）。") : t("没有查到")}
           {view.kind === "related" && view.title && (
             <> <a href={`https://scholar.google.com/scholar?q=${encodeURIComponent(view.title)}`} target="_blank" rel="noopener noreferrer" className={link}>
-              去 Google 学术找</a></>
+              {t("去 Google 学术找")}</a></>
           )}
         </div>
       ) : view.kind === "related" ? (
         view.items.map((w, i) => (
           <div key={i} className="py-1.5 border-t border-[#f1f3f4] first:border-t-0">
             <a href={w.url} target="_blank" rel="noopener noreferrer" onClick={open(w.url)}
-              className={`${link} text-[13.5px] leading-snug`}><MathText text={w.title || "（无标题）"} /></a>
+              className={`${link} text-[13.5px] leading-snug`}><MathText text={w.title || t("（无标题）")} /></a>
             <div className="text-[11.5px] text-[#5f6368] mt-0.5 leading-snug">
               {[w.authors, [w.venue, w.year].filter(Boolean).join(", ")].filter(Boolean).join(" - ")}
-              {w.citations ? ` · 被引 ${w.citations}` : ""}
+              {w.citations ? ` · ${t("被引 {n}", { n: w.citations })}` : ""}
               {w.pdfUrl && <> · <a href={w.pdfUrl} target="_blank" rel="noopener noreferrer" onClick={open(w.pdfUrl)} className={link}>[PDF]</a></>}
             </div>
           </div>
@@ -509,7 +510,7 @@ function SubList({ view, onBack, onOpenArxiv }) {
                 ? <a href={v.url} target="_blank" rel="noopener noreferrer" onClick={open(v.url)} className={`${link} text-[13px]`}>{v.source}</a>
                 : <span className="text-[13px]">{v.source}</span>}
               <div className="text-[11.5px] text-[#5f6368]">
-                {[v.host, v.version, v.oa ? "开放获取" : null].filter(Boolean).join(" · ")}
+                {[v.host, v.version, v.oa ? t("开放获取") : null].filter(Boolean).join(" · ")}
               </div>
             </div>
             {v.pdfUrl && (
@@ -551,11 +552,11 @@ function BookmarkButton({ card, act }) {
   useEffect(() => { if (!msg) return; const t = setTimeout(() => setMsg(""), 2500); return () => clearTimeout(t); }, [msg]);
 
   const click = async () => {
-    if (!session?.uid) { setMsg("登录后才能收藏"); return; }
+    if (!session?.uid) { setMsg(t("登录后才能收藏")); return; }
     if (busy || row === undefined) return;
     if (row) {
       setBusy(true);
-      if (await removeBookmark(row.id)) setRow(null); else setMsg("取消收藏失败");
+      if (await removeBookmark(row.id)) setRow(null); else setMsg(t("取消收藏失败"));
       setBusy(false);
       return;
     }
@@ -565,7 +566,7 @@ function BookmarkButton({ card, act }) {
   const pick = async (colId) => {
     setBusy(true);
     try { setRow(await saveBookmark(card, colId)); setOpen(false); }
-    catch (e) { setMsg(e.message || "收藏失败"); }
+    catch (e) { setMsg(e.message || t("收藏失败")); }
     setBusy(false);
   };
   const saved = !!row;
@@ -574,22 +575,22 @@ function BookmarkButton({ card, act }) {
   return (
     <span ref={boxRef} className="relative">
       <button onClick={click} disabled={busy} className={`${act} ${saved ? "!text-[#b06000]" : ""}`}
-        title={saved ? "已收藏（点一下取消）" : "收藏到 ResearchHub 文献收藏"}>
+        title={saved ? t("已收藏（点一下取消）") : t("收藏到 ResearchHub 文献收藏")}>
         <svg viewBox="0 0 24 24" width="14" height="14" fill={saved ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z" />
         </svg>
-        {saved ? "已收藏" : "收藏"}
+        {saved ? t("已收藏") : t("收藏")}
       </button>
       {msg && (
         <span className="absolute right-0 bottom-full mb-1.5 whitespace-nowrap px-2 py-1 rounded bg-[#3c4043] text-[#fff] text-[11.5px]">{msg}</span>
       )}
       {open && (
         <div className="absolute right-0 bottom-full mb-1.5 w-52 py-1 rounded-lg bg-[#fff] border border-[#dadce0] shadow-[0_4px_16px_rgba(0,0,0,0.18)] z-10">
-          <div className="px-3 py-1 text-[11px] text-[#5f6368]">收藏到…</div>
+          <div className="px-3 py-1 text-[11px] text-[#5f6368]">{t("收藏到…")}</div>
           <div className="max-h-[220px] overflow-y-auto">
             <button onClick={() => pick(null)} disabled={busy} className={item}>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#5f6368]"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
-              <span className="truncate">默认（未分类）</span>
+              <span className="truncate">{t("默认（未分类）")}</span>
             </button>
             {cols?.length > 0 && <div className="mx-2 my-1 border-t border-[#e8eaed]" />}
             {cols === null && <div className="px-3 py-1.5 text-[12px] text-[#9aa0a6]">…</div>}

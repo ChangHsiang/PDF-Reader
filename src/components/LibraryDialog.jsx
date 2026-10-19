@@ -9,6 +9,7 @@ import {
   listBookmarks, listCollections, removeBookmark, updateBookmark,
   createCollection, renameCollection, deleteCollection, arxivOf,
 } from "../lib/library";
+import { t } from "../lib/i18n";
 
 /**
  * 文献收藏（从 ResearchHub 网站的 Library 搬过来，同一份数据：bookmarks + collections）。
@@ -109,13 +110,13 @@ export default function LibraryDialog({ onClose }) {
 
   let body;
   if (session === undefined || (loading && session?.uid)) {
-    body = <div className="flex-1 flex items-center justify-center text-[#9aa0a6] text-[13px]">正在加载…</div>;
+    body = <div className="flex-1 flex items-center justify-center text-[#9aa0a6] text-[13px]">{t("正在加载…")}</div>;
   } else if (!session?.uid) {
     body = (
       <div className="flex-1 flex items-center justify-center p-4">
         <div className={`${panel} w-full max-w-[380px] p-5`}>
           <LoginForm />
-          <div className="text-[11.5px] text-[#9aa0a6] mt-3 leading-relaxed">文献收藏存在 ResearchHub 账号里，和网站上的「文献收藏」是同一份。</div>
+          <div className="text-[11.5px] text-[#9aa0a6] mt-3 leading-relaxed">{t("文献收藏存在 ResearchHub 账号里，和网站上的「文献收藏」是同一份。")}</div>
         </div>
       </div>
     );
@@ -135,8 +136,8 @@ export default function LibraryDialog({ onClose }) {
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
           <div className={`${panel} p-3`}>
-            <div className="text-[11px] font-bold text-[#9aa0a6] px-1 pb-2">标签</div>
-            {tagCloud.length === 0 ? <div className="text-[12px] text-[#7a7a7a] px-1">还没有标签</div> : (
+            <div className="text-[11px] font-bold text-[#9aa0a6] px-1 pb-2">{t("标签")}</div>
+            {tagCloud.length === 0 ? <div className="text-[12px] text-[#7a7a7a] px-1">{t("还没有标签")}</div> : (
               <div className="flex flex-wrap gap-1.5">
                 {tagCloud.map(([t, n]) => (
                   <button key={t} onClick={() => setActiveTag(activeTag === t ? null : t)}
@@ -156,20 +157,20 @@ export default function LibraryDialog({ onClose }) {
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[#ffffff14]">
           <label className="flex-1 flex items-center gap-2 rounded-full px-3 h-9 bg-[#00000040] border border-[#ffffff1f] focus-within:border-[#7ec8e3]">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#9aa0a6" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索标题 / 作者 / 期刊 / 摘要…"
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("搜索标题 / 作者 / 期刊 / 摘要…")}
               className="flex-1 bg-transparent outline-none border-none text-[13px] text-[#e8eaed] placeholder:text-[#7a7a7a]" />
           </label>
           {activeTag && (
             <button onClick={() => setActiveTag(null)} className="h-7 px-2.5 rounded-full text-[11.5px] font-bold bg-[#7ec8e3] text-[#10232c] border-none cursor-pointer">{activeTag} ×</button>
           )}
           <MenuSelect value={sortKey} onChange={setSortKey}
-            options={[["created", "最近收藏"], ["year", "年份"], ["title", "标题"]]} />
+            options={[["created", t("最近收藏")], ["year", t("年份")], ["title", t("标题")]]} />
         </div>
         {visible.length === 0 ? (
           <div className="text-center py-20 text-[#9aa0a6]">
             <div className="text-[34px] mb-2">📭</div>
-            <div className="text-[14px]">{activeCol === "all" ? "还没有收藏任何文献" : "这里还是空的"}</div>
-            <div className="text-[11.5px] mt-2">在阅读器里点引用编号，文献卡片上点 ☆ 收藏</div>
+            <div className="text-[14px]">{activeCol === "all" ? t("还没有收藏任何文献") : t("这里还是空的")}</div>
+            <div className="text-[11.5px] mt-2">{t("在阅读器里点引用编号，文献卡片上点 ☆ 收藏")}</div>
           </div>
         ) : (
           <ul className="flex-1 min-h-0 overflow-y-auto thin-scrollbar m-0 p-0 list-none divide-y divide-[#ffffff0f]">
@@ -182,7 +183,7 @@ export default function LibraryDialog({ onClose }) {
                     onDragEnd={() => setDraggingId(null)}
                     className={`w-full text-left px-4 py-3 cursor-pointer border-none border-l-2 block select-none
                       ${draggingId === b.id ? "opacity-40" : ""} ${on ? "bg-[#7ec8e31a] border-l-[#7ec8e3]" : "bg-transparent border-l-transparent hover:bg-[#ffffff0a]"}`}>
-                    <div className="text-[#f1f1f1] text-[13.5px] font-bold font-serif leading-snug line-clamp-2 mb-1"><MathText text={b.title || "(无标题)"} /></div>
+                    <div className="text-[#f1f1f1] text-[13.5px] font-bold font-serif leading-snug line-clamp-2 mb-1"><MathText text={b.title || t("(无标题)")} /></div>
                     <div className="text-[#a8a8a8] text-[12px] line-clamp-1">{(b.authors || []).slice(0, 3).join(", ")}{(b.authors || []).length > 3 ? " …" : ""}</div>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {b.year && <span className="text-[11px] text-[#8a8a8a] tabular-nums">{b.year}</span>}
@@ -204,11 +205,11 @@ export default function LibraryDialog({ onClose }) {
       {confirmDelete && createPortal(
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 font-sans" onClick={() => setConfirmDelete(null)}>
           <div onClick={e => e.stopPropagation()} className={`${panel} w-[min(92vw,400px)] p-6`}>
-            <div className="text-[#fff] font-bold text-[15px] mb-2">删除收藏夹「{confirmDelete.name}」？</div>
-            <div className="text-[#c8c8c8] text-[13px] leading-relaxed mb-5">收藏夹会被删除，里面的文献回到「未分类」。</div>
+            <div className="text-[#fff] font-bold text-[15px] mb-2">{t("删除收藏夹「{name}」？", { name: confirmDelete.name })}</div>
+            <div className="text-[#c8c8c8] text-[13px] leading-relaxed mb-5">{t("收藏夹会被删除，里面的文献回到「未分类」。")}</div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setConfirmDelete(null)} className="h-8 px-4 rounded-full text-[13px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">取消</button>
-              <button onClick={() => delCol(confirmDelete)} className="h-8 px-4 rounded-full text-[13px] font-bold text-[#fff] bg-[#d93025] border-none cursor-pointer hover:bg-[#b3261e]">确定删除</button>
+              <button onClick={() => setConfirmDelete(null)} className="h-8 px-4 rounded-full text-[13px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">{t("取消")}</button>
+              <button onClick={() => delCol(confirmDelete)} className="h-8 px-4 rounded-full text-[13px] font-bold text-[#fff] bg-[#d93025] border-none cursor-pointer hover:bg-[#b3261e]">{t("确定删除")}</button>
             </div>
           </div>
         </div>, document.body)}
@@ -225,8 +226,8 @@ function Shell({ onClose, children }) {
       <div className="w-full max-w-[1280px] h-full max-h-[860px] flex flex-col rounded-2xl bg-[#1f2023] border border-[#ffffff26]
                       shadow-[0_16px_48px_rgba(0,0,0,0.55)] overflow-hidden">
         <div className="relative h-11 shrink-0 flex items-center justify-center">
-          <span className="text-[14.5px] text-[#fff] font-bold">文献收藏</span>
-          <button onClick={onClose} title="关闭（Esc）"
+          <span className="text-[14.5px] text-[#fff] font-bold">{t("文献收藏")}</span>
+          <button onClick={onClose} title={t("关闭（Esc）")}
             className="absolute right-2 w-8 h-8 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer text-[#c8c8c8] hover:bg-[#ffffff1a]">
             ✕
           </button>
@@ -275,9 +276,9 @@ function CollectionList({ collections, counts, activeCol, onSelect, onCreate, on
   return (
     <div className={`${panel} p-2 flex flex-col min-h-0 max-h-full`}>
       <div className="shrink-0">
-        <div className="text-[11px] font-bold text-[#9aa0a6] px-3 pt-1 pb-2">收藏夹</div>
-        {item("all", "全部", counts.all || 0, false)}
-        {item("uncat", "未分类", counts.uncat || 0, true)}
+        <div className="text-[11px] font-bold text-[#9aa0a6] px-3 pt-1 pb-2">{t("收藏夹")}</div>
+        {item("all", t("全部"), counts.all || 0, false)}
+        {item("uncat", t("未分类"), counts.uncat || 0, true)}
         <div className="my-1.5 mx-2 border-t border-[#ffffff14]" />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
@@ -290,11 +291,11 @@ function CollectionList({ collections, counts, activeCol, onSelect, onCreate, on
           <div key={c.id} className="group relative">
             {item(c.id, c.name, counts[c.id] || 0, true)}
             <div className="hidden group-hover:flex absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5">
-              <button onClick={(e) => { e.stopPropagation(); setEditing(c); setName(c.name); }} title="重命名"
+              <button onClick={(e) => { e.stopPropagation(); setEditing(c); setName(c.name); }} title={t("重命名")}
                 className="w-6 h-6 rounded bg-[#3a3b3e] border border-[#ffffff1f] cursor-pointer text-[#b8b8b8] hover:text-[#fff] flex items-center justify-center">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
               </button>
-              <button onClick={(e) => { e.stopPropagation(); onDelete(c); }} title="删除"
+              <button onClick={(e) => { e.stopPropagation(); onDelete(c); }} title={t("删除")}
                 className="w-6 h-6 rounded bg-[#3a3b3e] border border-[#ffffff1f] cursor-pointer text-[#b8b8b8] hover:text-[#ff8a80] flex items-center justify-center">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
               </button>
@@ -305,14 +306,14 @@ function CollectionList({ collections, counts, activeCol, onSelect, onCreate, on
       <div className="shrink-0">
         {creating ? (
           <div className="px-3 py-1.5">
-            <input autoFocus value={name} onChange={e => setName(e.target.value)} onBlur={finishCreate} placeholder="收藏夹名称" className={input}
+            <input autoFocus value={name} onChange={e => setName(e.target.value)} onBlur={finishCreate} placeholder={t("收藏夹名称")} className={input}
               onKeyDown={e => { if (e.key === "Enter") finishCreate(); if (e.key === "Escape") { setCreating(false); setName(""); } }} />
           </div>
         ) : (
           <button onClick={() => { setCreating(true); setName(""); }}
             className="w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] text-[#9aa0a6] hover:text-[#7ec8e3] hover:bg-[#ffffff0a] bg-transparent border-none cursor-pointer">
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-            新建收藏夹
+            {t("新建收藏夹")}
           </button>
         )}
       </div>
@@ -393,7 +394,7 @@ function TagEditor({ tags, onChange }) {
           if (e.key === "Backspace" && !input && tags.length) onChange(tags.slice(0, -1));
         }}
         onBlur={() => { if (input.trim()) add(input); }}
-        placeholder={tags.length ? "+ 添加" : "+ 添加标签（回车确认）"}
+        placeholder={tags.length ? t("+ 添加") : t("+ 添加标签（回车确认）")}
         className="min-w-[100px] flex-1 bg-transparent outline-none border-none text-[12px] text-[#e8eaed] placeholder:text-[#8a8a8a] py-1" />
     </div>
   );
@@ -408,16 +409,16 @@ function Figures({ arxivId }) {
     figuresFor(arxivId).then(f => { if (alive) setFigs(f); }).catch(() => { if (alive) setFigs([]); });
     return () => { alive = false; };
   }, [arxivId]);
-  if (!arxivId) return <div className="text-[12.5px] text-[#9aa0a6] py-3">只有 arXiv 文献能取到插图</div>;
-  if (figs === null) return <div className="text-[12.5px] text-[#9aa0a6] py-3">正在找插图…</div>;
-  if (!figs.length) return <div className="text-[12.5px] text-[#9aa0a6] py-3">这篇没有可用的插图</div>;
+  if (!arxivId) return <div className="text-[12.5px] text-[#9aa0a6] py-3">{t("只有 arXiv 文献能取到插图")}</div>;
+  if (figs === null) return <div className="text-[12.5px] text-[#9aa0a6] py-3">{t("正在找插图…")}</div>;
+  if (!figs.length) return <div className="text-[12.5px] text-[#9aa0a6] py-3">{t("这篇没有可用的插图")}</div>;
   return (
     <>
       <div className="grid grid-cols-2 gap-2">
         {figs.map((f, i) => (
-          <button key={f.key || i} onClick={() => setLb(i)} aria-label={`图 ${i + 1}`}
+          <button key={f.key || i} onClick={() => setLb(i)} aria-label={t("图 {n}", { n: i + 1 })}
             className="rounded-lg border border-[#ffffff1f] overflow-hidden cursor-zoom-in p-1 bg-[#fff] hover:border-[#7ec8e3]">
-            <img src={f.url} alt={`图 ${i + 1}`} loading="lazy" draggable={false} referrerPolicy="no-referrer" className="w-full h-[86px] object-contain" />
+            <img src={f.url} alt={t("图 {n}", { n: i + 1 })} loading="lazy" draggable={false} referrerPolicy="no-referrer" className="w-full h-[86px] object-contain" />
           </button>
         ))}
       </div>
@@ -433,7 +434,7 @@ function Detail({ b, collections, onUpdate, onRemove }) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-[#9aa0a6] p-8 text-center">
         <div className="text-[38px] mb-3">📖</div>
-        <div className="text-[13px]">从左侧列表中选择一篇文献</div>
+        <div className="text-[13px]">{t("从左侧列表中选择一篇文献")}</div>
       </div>
     );
   }
@@ -455,15 +456,15 @@ function Detail({ b, collections, onUpdate, onRemove }) {
           )}
           {arxivId && <span className="text-[11px] font-mono rounded-md px-1.5 py-0.5 border border-[#ffffff26] text-[#b8b8b8]">{arxivId}</span>}
           {b.doi && <a href={`https://doi.org/${b.doi}`} target="_blank" rel="noopener noreferrer" className="text-[10.5px] text-[#9aa0a6] hover:text-[#7ec8e3] truncate max-w-[180px]">doi:{b.doi}</a>}
-          <button onClick={copyBib} title="复制 BibTeX"
+          <button onClick={copyBib} title={t("复制 BibTeX")}
             className={`ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold font-mono uppercase border cursor-pointer
               ${copied ? "text-[#81c995] border-[#81c99566] bg-[#81c9951a]" : "text-[#7ec8e3] border-[#ffffff26] bg-transparent hover:bg-[#7ec8e31a]"}`}>
-            {copied ? "已复制" : "BibTeX"}
+            {copied ? t("已复制") : "BibTeX"}
           </button>
         </div>
         <h2 className="text-[#f1f1f1] text-[16px] font-bold font-serif leading-snug mb-2 mt-0">
           <button onClick={open} className="text-left bg-transparent border-none p-0 cursor-pointer text-inherit font-bold font-serif hover:text-[#7ec8e3] hover:underline">
-            <MathText text={b.title || "(无标题)"} />
+            <MathText text={b.title || t("(无标题)")} />
           </button>
         </h2>
         <div className="text-[#c8c8c8] text-[12.5px] leading-relaxed">{(b.authors || []).join(", ")}</div>
@@ -473,7 +474,7 @@ function Detail({ b, collections, onUpdate, onRemove }) {
         </div>
       </div>
       <div className="shrink-0 flex items-center gap-1 px-5 border-b border-[#ffffff14]">
-        {[["abstract", "摘要"], ["figures", "图片"]].map(([k, label]) => (
+        {[["abstract", t("摘要")], ["figures", t("图片")]].map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`relative px-2 pt-1.5 pb-2 text-[13px] cursor-pointer bg-transparent border-none ${tab === k ? "text-[#fff] font-bold" : "text-[#9aa0a6] hover:text-[#d0d0d0]"}`}>
             {label}
@@ -483,11 +484,11 @@ function Detail({ b, collections, onUpdate, onRemove }) {
       </div>
       <div className="px-5 pt-3 pb-4 flex-1 overflow-y-auto overscroll-contain thin-scrollbar min-h-0">
         {tab === "abstract"
-          ? <div className="text-[#d0d0d0] text-[13px] leading-[1.7]"><MathText text={b.abstract || b.summary || "（暂无摘要）"} /></div>
+          ? <div className="text-[#d0d0d0] text-[13px] leading-[1.7]"><MathText text={b.abstract || b.summary || t("（暂无摘要）")} /></div>
           : <Figures arxivId={arxivId} />}
       </div>
       <div className="shrink-0 flex items-start gap-2.5 px-5 py-2.5 border-t border-[#ffffff14]">
-        <span className="text-[11px] font-bold text-[#9aa0a6] shrink-0 pt-[5px]">标签</span>
+        <span className="text-[11px] font-bold text-[#9aa0a6] shrink-0 pt-[5px]">{t("标签")}</span>
         <div className="flex-1 min-w-0"><TagEditor tags={b.tags || []} onChange={(tags) => onUpdate(b.id, { tags })} /></div>
       </div>
       <div className="shrink-0 p-3 border-t border-[#ffffff14] flex items-center gap-2">
@@ -495,11 +496,11 @@ function Detail({ b, collections, onUpdate, onRemove }) {
           <button onClick={() => (arxivId ? openViewer(`https://arxiv.org/pdf/${arxivId}`) : openTab(b.pdf_url))}
             className={`${btn} text-[#f28b82] hover:bg-[#f28b821a]`}>PDF</button>
         )}
-        {b.abs_url && <button onClick={() => openTab(b.abs_url)} className={`${btn} text-[#7ec8e3] hover:bg-[#7ec8e31a]`}>摘要页</button>}
+        {b.abs_url && <button onClick={() => openTab(b.abs_url)} className={`${btn} text-[#7ec8e3] hover:bg-[#7ec8e31a]`}>{t("摘要页")}</button>}
         <div className="ml-auto flex items-center gap-2 min-w-0">
           <MenuSelect value={b.collection_id || ""} onChange={(v) => onUpdate(b.id, { collection_id: v || null })} up
-            options={[["", "未分类"], ...collections.map(c => [c.id, c.name])]} />
-          <button onClick={() => onRemove(b.id)} className={`${btn} text-[#9aa0a6] hover:text-[#f28b82] hover:bg-[#f28b821a]`}>移除</button>
+            options={[["", t("未分类")], ...collections.map(c => [c.id, c.name])]} />
+          <button onClick={() => onRemove(b.id)} className={`${btn} text-[#9aa0a6] hover:text-[#f28b82] hover:bg-[#f28b821a]`}>{t("移除")}</button>
         </div>
       </div>
     </div>

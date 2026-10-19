@@ -176,7 +176,7 @@ export default function SettingsDialog({ onClose }) {
           {/* 界面语言：改了整页刷新（文案在各模块加载时就定了，不做热切换） */}
           <Row title={t("界面语言")}>
             <Dropdown value={s.lang || "auto"} onChange={v => { rememberLang(v); setSettings({ lang: v }).then(() => location.reload()); }}
-              options={[["auto", t("跟随浏览器")], ["zh", "中文"], ["en", "English"]]} />
+              options={[["auto", t("跟随浏览器")], ["zh", "中文"], ["en", "English"]]} />   {/* i18n-ignore：语言用自己的名字 */}
           </Row>
           <OpenPdfToggles Switch={Switch} />
           <div className="py-2.5">
