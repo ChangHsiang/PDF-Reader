@@ -1,5 +1,6 @@
 import { buildBackup, importBackupData, replaceWithBackup, stats } from "./backup";
 import { GOOGLE_CLIENT_ID } from "./config";
+import { t } from "./i18n";
 
 /**
  * 笔记备份到用户自己的 Google 云端硬盘（设置 → 数据）。**只在 background 里跑**（弹登录窗口、定时备份都在这里）。
@@ -52,7 +53,7 @@ const nameOf = (d) => `PDF-Reader-backup-${dayOf(d)}-${pad(d.getHours())}${pad(d
 
 /** 走一次 Google 授权；interactive=false 时不弹窗（静默续期），失败抛错 */
 async function authorize(interactive, email) {
-  if (!GOOGLE_CLIENT_ID) throw new Error("这个版本没有配置 Google 客户端 ID");
+  if (!GOOGLE_CLIENT_ID) throw new Error(t("这个版本没有配置 Google 客户端 ID"));
   const redirect = chrome.identity.getRedirectURL("google");
   const p = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID, response_type: "token", redirect_uri: redirect, scope: SCOPES,
@@ -61,7 +62,7 @@ async function authorize(interactive, email) {
   const back = await chrome.identity.launchWebAuthFlow({ url: `https://accounts.google.com/o/oauth2/v2/auth?${p}`, interactive });
   const q = new URLSearchParams(new URL(back).hash.replace(/^#/, ""));
   const token = q.get("access_token");
-  if (!token) throw new Error(q.get("error") || "没有拿到授权");
+  if (!token) throw new Error(q.get("error") || t("没有拿到授权"));
   const exp = Date.now() + (Number(q.get("expires_in")) || 3600) * 1000;
   await chrome.storage.session.set({ gdrive_token: { token, exp } });
   return token;
@@ -75,7 +76,7 @@ async function token() {
   try { return await authorize(false, s?.email); }
   catch {
     await patchState({ needAuth: true });
-    throw new Error("Google 授权过期了，请在「设置 → 数据」里重新连接");
+    throw new Error(t("Google 授权过期了，请在「设置 → 数据」里重新连接"));
   }
 }
 
@@ -89,7 +90,7 @@ async function api(path, init = {}, retry = true) {
   return res;
 }
 const json = async (res, what) => {
-  if (!res.ok) throw new Error(`${what}失败（${res.status}）`);
+  if (!res.ok) throw new Error(t("{what}失败（{s}）", { what, s: res.status }));
   return res.json();
 };
 
@@ -101,11 +102,11 @@ async function folder() {
     if (r.ok && !(await r.json()).trashed) return s.folderId;
   }
   const q = encodeURIComponent(`name='${FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-  const found = (await json(await api(`/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`), "读取云端硬盘")).files?.[0];
+  const found = (await json(await api(`/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`), t("读取云端硬盘"))).files?.[0];
   const id = found?.id || (await json(await api(`/drive/v3/files?fields=id`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: FOLDER, mimeType: "application/vnd.google-apps.folder" }),
-  }), "建备份文件夹")).id;
+  }), t("建备份文件夹"))).id;
   await patchState({ folderId: id });
   return id;
 }
@@ -115,7 +116,7 @@ async function listRaw() {
   const dir = await folder();
   const q = encodeURIComponent(`'${dir}' in parents and trashed=false`);
   const files = (await json(await api(`/drive/v3/files?q=${q}&orderBy=modifiedTime desc&pageSize=100` +
-    `&fields=files(id,name,modifiedTime,appProperties)`), "读取备份列表")).files || [];
+    `&fields=files(id,name,modifiedTime,appProperties)`), t("读取备份列表"))).files || [];
   const me = await deviceId();
   return files.filter(f => /\.json$/i.test(f.name)).map(f => {
     const p = f.appProperties || {};
@@ -181,11 +182,11 @@ export async function backupNow({ manual = false } = {}) {
     const props = { app: "pdf-reader", device: me, day: dayOf(now), kind: manual ? "manual" : "auto", papers: String(st.papers), anns: String(st.anns) };
     const today = manual ? null : (await listRaw()).find(f => f.mine && f.kind === "auto" && f.day === props.day);
     const meta = { name: nameOf(now), mimeType: "application/json", appProperties: props,
-                   description: "PDF-Reader 插件的笔记备份（可在插件「设置 → 数据」里恢复）" };
+                   description: t("PDF-Reader 插件的笔记备份（可在插件「设置 → 数据」里恢复）") };
     const r = today
       ? await api(`/upload/drive/v3/files/${today.id}?uploadType=multipart&fields=id`, { method: "PATCH", ...multipart(meta, body) })
       : await api(`/upload/drive/v3/files?uploadType=multipart&fields=id`, { method: "POST", ...multipart({ ...meta, parents: [dir] }, body) });
-    if (!r.ok) throw new Error(`上传失败（${r.status}）`);
+    if (!r.ok) throw new Error(t("上传失败（{s}）", { s: r.status }));
     await prune().catch(() => {});
     await patchState({ lastBackup: now.toISOString(), lastError: null, needAuth: false, lastStats: st });
     return { ok: true, ...st };
@@ -198,7 +199,7 @@ export async function backupNow({ manual = false } = {}) {
 /** 从某一份恢复。mode：replace 本机变成那份 / merge 合并（同一条留较新的） */
 export async function restore(id, mode = "merge") {
   try {
-    const data = await json(await api(`/drive/v3/files/${id}?alt=media`), "下载备份");
+    const data = await json(await api(`/drive/v3/files/${id}?alt=media`), t("下载备份"));
     const st = mode === "replace" ? await replaceWithBackup(data) : await importBackupData(data);
     return { ok: true, ...st };
   } catch (e) {
@@ -210,7 +211,7 @@ export async function restore(id, mode = "merge") {
 export async function deleteBackup(id) {
   try {
     const r = await api(`/drive/v3/files/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
-    if (!r.ok) throw new Error(`删除失败（${r.status}）`);
+    if (!r.ok) throw new Error(t("删除失败（{s}）", { s: r.status }));
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };

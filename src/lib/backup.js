@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 /**
  * 备份 / 恢复（设置 → 数据）。笔记、标注都存在这个浏览器的插件存储里：在扩展页点「移除」，浏览器会把它们**全部删掉**，
  * 插件管不了（升级只要覆盖文件再点刷新，数据不动）。所以给一个导出成文件、再导入回来的办法。
@@ -72,14 +73,14 @@ const newer = (a, b) => String(a?.updated_at || a?.created_at || "") >= String(b
 
 export async function importBackup(file) {
   let data;
-  try { data = JSON.parse(await file.text()); } catch { throw new Error("不是有效的备份文件（读不出 JSON）"); }
+  try { data = JSON.parse(await file.text()); } catch { throw new Error(t("不是有效的备份文件（读不出 JSON）")); }
   return importBackupData(data);
 }
 
 /** 把一份备份合并进来（规则见文件头）。云端硬盘恢复也走这里 */
 export async function importBackupData(data) {
-  if (data?.app !== APP || !data.storage) throw new Error("不是 PDF-Reader 的备份文件");
-  if (data.format > FORMAT) throw new Error("这个备份是更新的版本导出的，请先把插件升级到最新版");
+  if (data?.app !== APP || !data.storage) throw new Error(t("不是 PDF-Reader 的备份文件"));
+  if (data.format > FORMAT) throw new Error(t("这个备份是更新的版本导出的，请先把插件升级到最新版"));
 
   const cur = await chrome.storage.local.get(null);
   const out = {};
@@ -126,8 +127,8 @@ export async function importBackupData(data) {
  * 「他人」里隐藏的那张表也换成备份里的；设置用备份里的（API Key 保留现在的）。偏好（localStorage）同合并：只补没有的
  */
 export async function replaceWithBackup(data) {
-  if (data?.app !== APP || !data.storage) throw new Error("不是 PDF-Reader 的备份文件");
-  if (data.format > FORMAT) throw new Error("这个备份是更新的版本导出的，请先把插件升级到最新版");
+  if (data?.app !== APP || !data.storage) throw new Error(t("不是 PDF-Reader 的备份文件"));
+  if (data.format > FORMAT) throw new Error(t("这个备份是更新的版本导出的，请先把插件升级到最新版"));
   const cur = await chrome.storage.local.get(null);
   const out = {};
   for (const [k, v] of Object.entries(data.storage)) if (k.startsWith(PAPER) && v) out[k] = v;

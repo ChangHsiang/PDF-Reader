@@ -14,6 +14,7 @@
 
 import { tokenize } from "./pdfium/textLayer";
 import { clientRectToNorm } from "./pdfium/rotate";
+import { t } from "./i18n";
 
 const S2 = "https://api.semanticscholar.org/graph/v1/paper";
 const S2_FIELDS = "title,authors,year,venue,abstract,citationCount,externalIds,openAccessPdf,url,journal";
@@ -272,7 +273,7 @@ const inspireBiblio = (pi) => {
 const authorLine = (names) => {
   const list = (names || []).filter(Boolean);
   if (!list.length) return [];
-  return list.length > 4 ? [...list.slice(0, 3), `等 ${list.length} 人`] : list;
+  return list.length > 4 ? [...list.slice(0, 3), t("等 {n} 人", { n: list.length })] : list;
 };
 
 /** INSPIRE 的人名是「姓, 名」，翻成「名 姓」好读一点 */

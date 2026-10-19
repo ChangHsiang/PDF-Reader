@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t } from "./i18n";
 
 /**
  * 插件设置，存 chrome.storage.local 的 `settings` 键（弹窗、阅读器、background 共用；
@@ -16,6 +17,8 @@ import { useEffect, useState } from "react";
  * - autoTranslate：选中文字后直接弹译文
  * - translateTarget：lib/translate 里 LANGS 的任一种语言代码
  * - translateEngine：google / bing / custom
+ * - lang：界面语言 auto（跟浏览器）/ zh / en（lib/i18n；页面那边同步读的是 localStorage 的 rh_lang）
+ * - lang：界面语言 auto（跟浏览器）/ zh / en（lib/i18n；页面那边同步读的是 localStorage 的 rh_lang）
  * - customApi：{ baseUrl, apiKey, model } —— 任何兼容 OpenAI chat/completions 的服务。
  *   Key 只存在本机这个浏览器里，不上传
  */
@@ -33,16 +36,17 @@ export const DEFAULT_SETTINGS = {
   translateTarget: "zh",
   translateEngine: "google",
   customApi: { baseUrl: "", apiKey: "", model: "" },
+  lang: "auto",
 };
 
 /** 页面颜色（护眼模式）。前四种是在画布上叠一层「正片叠底」的纸色：白底变成这个颜色，黑字还是黑的；
     夜间是把画布反相再转回色相（深底浅字，图的颜色基本保持）。具体画法见 index.css 的 .rh-paper-* */
 export const PAPERS = [
-  { key: "white", label: "白色", swatch: "#ffffff" },
-  { key: "green", label: "豆沙绿", swatch: "#cce8cf" },
-  { key: "sepia", label: "米黄", swatch: "#f4ecd8" },
-  { key: "gray", label: "浅灰", swatch: "#e4e4e4" },
-  { key: "dark", label: "夜间", swatch: "#2b2b2b" },
+  { key: "white", label: t("白色"), swatch: "#ffffff" },
+  { key: "green", label: t("豆沙绿"), swatch: "#cce8cf" },
+  { key: "sepia", label: t("米黄"), swatch: "#f4ecd8" },
+  { key: "gray", label: t("浅灰"), swatch: "#e4e4e4" },
+  { key: "dark", label: t("夜间"), swatch: "#2b2b2b" },
 ];
 
 export async function getSettings() {

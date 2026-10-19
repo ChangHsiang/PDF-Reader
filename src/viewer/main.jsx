@@ -7,6 +7,7 @@ import { useSession } from "../lib/useSession";
 import { arxivIdFromUrl } from "../lib/pdfAnchor";
 import { registerViewerTab } from "../lib/tabRestore";
 import { isLocalPdfUrl, identifyPdf, fileNameOf, FileAccessError } from "../lib/localPdf";
+import { t } from "../lib/i18n";
 
 /**
  * 阅读器页面：`viewer.html?url=https://arxiv.org/pdf/2301.12345v2[&panel=comments]`，
@@ -64,14 +65,14 @@ function FileAccessHelp() {
   return (
     <div className="h-screen flex items-center justify-center px-6 font-sans">
       <div className="max-w-[460px] text-[13px] text-[#ddd] leading-relaxed">
-        <div className="text-[15px] text-[#fff] font-bold mb-2">读不到这个本地文件</div>
-        <div>用这个阅读器打开本地 PDF，需要先允许插件访问本地文件：</div>
+        <div className="text-[15px] text-[#fff] font-bold mb-2">{t("读不到这个本地文件")}</div>
+        <div>{t("用这个阅读器打开本地 PDF，需要先允许插件访问本地文件：")}</div>
         <ol className="mt-2 mb-3 pl-5 list-decimal">
-          <li>打开<button onClick={open} className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[13px]">扩展管理页</button>里 PDF-Reader 的「详细信息」</li>
-          <li>打开「允许访问文件网址」</li>
-          <li>回到这里刷新</li>
+          <li>{t("打开")}<button onClick={open} className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[13px]">{t("扩展管理页")}</button>{t("里 PDF-Reader 的「详细信息」")}</li>
+          <li>{t("打开「允许访问文件网址」")}</li>
+          <li>{t("回到这里刷新")}</li>
         </ol>
-        <a href={rawUrl} className="text-[#7ec8e3] underline">用浏览器自带的阅读器打开</a>
+        <a href={rawUrl} className="text-[#7ec8e3] underline">{t("用浏览器自带的阅读器打开")}</a>
         <div className="mt-1 text-[11.5px] text-[#9a9a9a] break-all">{fileNameOf(rawUrl)}</div>
       </div>
     </div>
@@ -99,7 +100,7 @@ function App() {
   useEffect(() => {
     if (!isLocal) return;
     document.title = fileNameOf(rawUrl);
-    identifyPdf(rawUrl, { online: isWeb }).then(setLocal).catch(e => setLocal({ error: e instanceof FileAccessError ? "access" : (e?.message || "打不开") }));
+    identifyPdf(rawUrl, { online: isWeb }).then(setLocal).catch(e => setLocal({ error: e instanceof FileAccessError ? "access" : (e?.message || t("打不开")) }));
   }, []);
 
   useEffect(() => {
@@ -107,7 +108,7 @@ function App() {
     // 认出 DOI 的：标题用 Crossref 登记的（期刊 PDF 的元数据标题常常是「pone.0000001 1..11」这种排版文件名）
     if (isLocal && local?.doi && !local.arxivId) {
       fetch(`https://api.crossref.org/works/${encodeURIComponent(local.doi)}`).then(r => (r.ok ? r.json() : null))
-        .then(d => { const t = d?.message?.title?.[0]?.replace(/\s+/g, " ").trim(); if (t) { setTitle(t); document.title = t; } }).catch(() => {});
+        .then(d => { const ttl = d?.message?.title?.[0]?.replace(/\s+/g, " ").trim(); if (ttl) { setTitle(ttl); document.title = ttl; } }).catch(() => {});
     }
     if (!target?.id) return;
     // 标签名同 arXiv 摘要页：「[编号] 标题」（编号不带版本号）
@@ -120,22 +121,22 @@ function App() {
   }, [target?.id, local]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLocal && !local) {
-    return <div className="h-screen flex items-center justify-center text-[13px] text-[#ddd] font-sans">正在打开 {fileNameOf(rawUrl)}…</div>;
+    return <div className="h-screen flex items-center justify-center text-[13px] text-[#ddd] font-sans">{t("正在打开 {name}…", { name: fileNameOf(rawUrl) })}</div>;
   }
   if (isLocal && local.error) {
     if (local.error === "access") return <FileAccessHelp />;
     return (
       <div className="h-screen flex flex-col items-center justify-center gap-2 text-[13px] text-[#ddd] font-sans">
-        <div>打不开这个文件：{local.error}</div>
-        {isWeb && <a href={rawUrl} className="text-[#7ec8e3] underline" onClick={(e) => { e.preventDefault(); chrome.runtime.sendMessage({ type: "viewer:raw", url: rawUrl }); }}>用浏览器自带的阅读器打开</a>}
+        <div>{t("打不开这个文件：{err}", { err: local.error })}</div>
+        {isWeb && <a href={rawUrl} className="text-[#7ec8e3] underline" onClick={(e) => { e.preventDefault(); chrome.runtime.sendMessage({ type: "viewer:raw", url: rawUrl }); }}>{t("用浏览器自带的阅读器打开")}</a>}
       </div>
     );
   }
   if (!target) {
     return (
       <div className="h-screen flex items-center justify-center text-[13px] text-[#ddd] font-sans text-center px-6 leading-relaxed">
-        这个地址不是 PDF。<br />
-        {rawUrl && <a href={rawUrl} className="text-[#7ec8e3] underline">直接打开原链接</a>}
+        {t("这个地址不是 PDF。")}<br />
+        {rawUrl && <a href={rawUrl} className="text-[#7ec8e3] underline">{t("直接打开原链接")}</a>}
       </div>
     );
   }

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { MathText as LatexText } from "./bits";
+import { t } from "../lib/i18n";
 
 // ─── 插图灯箱 ─────────────────────────────────────────────────────────────────
 // 两端都是**卷轴**：所有图排成一条，轨道整体平移，旧图滑出、新图滑入是同一次位移。
@@ -291,7 +292,7 @@ function MobileLightbox({ figures, index, onIndex, onClose }) {
               {/* object-contain 让浏览器去适配，不用我们算 fit —— 也就没有
                   「缓存图算不出 fit 显示不全」和「先按原图画一帧的残影」 */}
               <img ref={el => { slideRefs.current[i] = el; }}
-                src={g.url} alt={`图 ${i + 1}`} draggable={false}
+                src={g.url} alt={t("图 {n}", { n: i + 1 })} draggable={false}
                 loading={Math.abs(i - index) <= 1 ? "eager" : "lazy"}
                 className="max-w-full max-h-full object-contain bg-[#fff] rounded-lg select-none
                            will-change-transform" />
@@ -545,7 +546,7 @@ export default function ImageLightbox({ images: figures, index, onIndex, onClose
     <div ref={rootRef} style={{ backgroundColor: "rgba(0,0,0,0.94)" }}
       className="fixed inset-0 z-[200] flex flex-col animate-fade-in" onClick={onClose}>
       {/* 关闭钮浮动：顶栏整条去掉了 —— 它只装一个按钮却占掉一行高度 */}
-      <button onClick={onClose} aria-label="关闭"
+      <button onClick={onClose} aria-label={t("关闭")}
         className="absolute top-3 right-3 z-20 w-10 h-10 rounded-xl bg-[#ffffff33] border border-[#ffffff4d]
                    text-[#fff] cursor-pointer hover:bg-[#ffffff66] transition-colors text-[20px] leading-none">×</button>
 
@@ -556,10 +557,10 @@ export default function ImageLightbox({ images: figures, index, onIndex, onClose
         {n > 1 && (
           <div className="flex flex-col items-center justify-start gap-2 w-[132px] shrink-0 pb-2 px-2
                           border-r border-[#ffffff33]" onClick={e => e.stopPropagation()}>
-            <LbBtn label="上一批" onClick={() => scrollRail(-1)}><Chevron dir="up" size={18} /></LbBtn>
+            <LbBtn label={t("上一批")} onClick={() => scrollRail(-1)}><Chevron dir="up" size={18} /></LbBtn>
             <div ref={railRef} className="flex-1 min-h-0 w-full overflow-y-auto thin-scrollbar flex flex-col gap-2">
               {figures.map((g, i) => (
-                <button key={g.key || i} onClick={() => jump(i)} aria-label={`第 ${i + 1} 张`}
+                <button key={g.key || i} onClick={() => jump(i)} aria-label={t("第 {n} 张", { n: i + 1 })}
                   style={{ height: thumbH }}
                   className={`shrink-0 w-full rounded-lg overflow-hidden bg-[#fff] p-0.5 cursor-pointer
                               border-2 transition-all
@@ -568,7 +569,7 @@ export default function ImageLightbox({ images: figures, index, onIndex, onClose
                 </button>
               ))}
             </div>
-            <LbBtn label="下一批" onClick={() => scrollRail(1)}><Chevron dir="down" size={18} /></LbBtn>
+            <LbBtn label={t("下一批")} onClick={() => scrollRail(1)}><Chevron dir="down" size={18} /></LbBtn>
           </div>
         )}
 
@@ -579,19 +580,19 @@ export default function ImageLightbox({ images: figures, index, onIndex, onClose
             现在 `w-14`（3.5rem）= 按钮 + 两边各 0.5rem，根字号怎么变都留得出缝 */}
         <div className="flex flex-col items-center gap-2 w-14 shrink-0 pb-3 border-r border-[#ffffff33]"
           onClick={e => e.stopPropagation()}>
-          <LbBtn label="放大" onClick={() => setZ(zoom + ZOOM_STEP)} disabled={zoom >= ZOOM_MAX}>
+          <LbBtn label={t("放大")} onClick={() => setZ(zoom + ZOOM_STEP)} disabled={zoom >= ZOOM_MAX}>
             <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
               <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3M11 8v6M8 11h6" />
             </svg>
           </LbBtn>
-          <LbBtn label="缩小" onClick={() => setZ(zoom - ZOOM_STEP)} disabled={zoom <= ZOOM_MIN}>
+          <LbBtn label={t("缩小")} onClick={() => setZ(zoom - ZOOM_STEP)} disabled={zoom <= ZOOM_MIN}>
             <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
               <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3M8 11h6" />
             </svg>
           </LbBtn>
           {/* 1 倍 = 适应窗口（object-contain 之后就是这个语义），所以直接显示 zoom */}
           <span className="text-[#fff] text-[12px] font-sans font-semibold tabular-nums">{Math.round(zoom * 100)}%</span>
-          <LbBtn label="适应窗口" onClick={() => setZ(1)} disabled={zoom === 1}>
+          <LbBtn label={t("适应窗口")} onClick={() => setZ(1)} disabled={zoom === 1}>
             <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4" />
             </svg>
@@ -606,7 +607,7 @@ export default function ImageLightbox({ images: figures, index, onIndex, onClose
             左内边距明显大于右边：省下来的宽度让给「和缩略图轨道之间的距离」 */}
         <div className="flex-1 min-w-0 flex flex-col items-center pl-12 pr-4 pb-1">
           {n > 1 && (
-            <LbBtn label="上一张" onClick={(e) => { e.stopPropagation(); go(-1); }} className="mb-1">
+            <LbBtn label={t("上一张")} onClick={(e) => { e.stopPropagation(); go(-1); }} className="mb-1">
               <Chevron dir="up" />
             </LbBtn>
           )}
@@ -631,7 +632,7 @@ export default function ImageLightbox({ images: figures, index, onIndex, onClose
                   {/* object-contain：适配交给浏览器，不再自己算 fit。
                       缩放/平移只加在当前这张上 */}
                   <img ref={el => { imgRefs.current[i] = el; }}
-                    src={g.url} alt={`图 ${i + 1}`} draggable={false}
+                    src={g.url} alt={t("图 {n}", { n: i + 1 })} draggable={false}
                     loading={Math.abs(i - index) <= 1 ? "eager" : "lazy"}
                     onClick={e => e.stopPropagation()}
                     style={i === index ? {
@@ -645,7 +646,7 @@ export default function ImageLightbox({ images: figures, index, onIndex, onClose
             </div>
           </div>
           {n > 1 && (
-            <LbBtn label="下一张" onClick={(e) => { e.stopPropagation(); go(1); }} className="mt-1">
+            <LbBtn label={t("下一张")} onClick={(e) => { e.stopPropagation(); go(1); }} className="mt-1">
               <Chevron dir="down" />
             </LbBtn>
           )}

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 /**
  * 公式「复制 LaTeX」：从 arXiv 拿论文的 LaTeX 源码，算出每个带编号公式的编号 → 源码。
  *
@@ -46,7 +47,7 @@ export async function sourceSize(id) {
 
 async function fetchSource(id) {
   const r = await fetch(`https://arxiv.org/e-print/${id}`);
-  if (!r.ok) throw new Error(`arXiv 返回 ${r.status}`);
+  if (!r.ok) throw new Error(t("arXiv 返回 {s}", { s: r.status }));
   let bytes = new Uint8Array(await r.arrayBuffer());
   if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
     const ds = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));

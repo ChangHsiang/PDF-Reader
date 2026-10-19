@@ -1,4 +1,5 @@
 import { rest, restRows, readSession } from "./session";
+import { t } from "./i18n";
 
 /**
  * 文献收藏（和 ResearchHub 网站的「文献收藏」是同一份数据：bookmarks + collections 两张表，kind = arxiv）。
@@ -40,7 +41,7 @@ const SOURCE = { INSPIRE: "inspire", "Semantic Scholar": "semantic", Crossref: "
 /** 收藏一张卡片到某个收藏夹（null = 未分类） */
 export async function saveBookmark(c, collectionId) {
   const u = await uid();
-  if (!u) throw new Error("登录后才能收藏");
+  if (!u) throw new Error(t("登录后才能收藏"));
   const arxiv = c.arxiv ? String(c.arxiv).replace(/v\d+$/, "") : null;
   const authors = (c.people?.length ? c.people.map(p => [p.given, p.family].filter(Boolean).join(" ")) : (c.authors || "").split(/,\s*/))
     .filter(Boolean);
@@ -58,7 +59,7 @@ export async function saveBookmark(c, collectionId) {
     collection_id: collectionId || null,
   };
   const rows = await restRows("bookmarks", { method: "POST", auth: true, body: row });
-  if (!rows?.[0]) throw new Error("收藏失败，请稍后再试");
+  if (!rows?.[0]) throw new Error(t("收藏失败，请稍后再试"));
   return rows[0];
 }
 

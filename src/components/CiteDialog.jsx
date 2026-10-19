@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { citeData, FORMATS, EXPORTS, exportText } from "../lib/cite";
+import { t } from "../lib/i18n";
 
 /**
  * 「引用」对话框（参照 Google 学术）：三种格式各一行，点一行就复制；
@@ -40,8 +41,8 @@ export default function CiteDialog({ card, onClose }) {
       onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-full max-w-[600px] max-h-[90vh] overflow-y-auto rounded-lg bg-[#fff] text-[#202124] shadow-[0_8px_32px_rgba(0,0,0,0.3)]">
         <div className="relative h-12 flex items-center justify-center border-b border-[#e8eaed]">
-          <span className="text-[15px] font-medium">引用</span>
-          <button onClick={onClose} title="关闭（Esc）"
+          <span className="text-[15px] font-medium">{t("引用")}</span>
+          <button onClick={onClose} title={t("关闭（Esc）")}
             className="absolute right-2 w-8 h-8 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer text-[#5f6368] hover:bg-[#0000000f]">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>
           </button>
@@ -49,15 +50,15 @@ export default function CiteDialog({ card, onClose }) {
 
         <div className="px-4 py-3">
           {!data ? (
-            <div className="text-[13px] text-[#5f6368] py-6 text-center">正在整理引用信息…</div>
+            <div className="text-[13px] text-[#5f6368] py-6 text-center">{t("正在整理引用信息…")}</div>
           ) : FORMATS.map(([label, fmt]) => {
             const { html, text } = fmt(data);
             return (
-              <button key={label} onClick={() => copy(label, text)} title="点击复制"
+              <button key={label} onClick={() => copy(label, text)} title={t("点击复制")}
                 className="w-full text-left flex gap-4 px-2 py-2.5 my-1 rounded-md bg-transparent cursor-pointer
                            border border-transparent hover:border-[#dadce0] group">
                 <span className="w-[76px] shrink-0 text-[13px] text-[#5f6368] pt-px">
-                  {copied === label ? <span className="text-[#188038]">✓ 已复制</span> : label}
+                  {copied === label ? <span className="text-[#188038]">{t("✓ 已复制")}</span> : label}
                 </span>
                 <span className="flex-1 min-w-0 text-[13.5px] leading-relaxed text-[#202124] break-words select-text"
                   dangerouslySetInnerHTML={{ __html: html }} />
@@ -70,10 +71,10 @@ export default function CiteDialog({ card, onClose }) {
           {EXPORTS.map(([label]) => (
             <button key={label} disabled={!data}
               onClick={async () => copy(label, await exportText(label, data, { bibtexUrl: card?.bibtexUrl }))}
-              title={`复制 ${label} 格式`}
+              title={t("复制 {f} 格式", { f: label })}
               className="flex-1 h-9 rounded-full text-[13px] text-[#1a0dab] bg-[#fff] border border-[#dadce0]
                          cursor-pointer hover:bg-[#f8f9fa] disabled:opacity-40">
-              {copied === label ? "✓ 已复制" : label}
+              {copied === label ? t("✓ 已复制") : label}
             </button>
           ))}
         </div>

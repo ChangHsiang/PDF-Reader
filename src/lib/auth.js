@@ -1,4 +1,5 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY, anonHeaders } from "./config";
+import { t } from "./i18n";
 
 /**
  * 登录态。**只在 background 里跑**，别的页面（阅读器 / 弹窗）一律发消息过来要 token
@@ -48,7 +49,7 @@ async function authFetch(path, body) {
     try { data = await res.json(); } catch { /* 空响应 */ }
     return { res, data };
   } catch (e) {
-    return { res: null, data: null, netErr: e.name === "AbortError" ? "服务器响应超时，请稍后再试" : "网络连接失败" };
+    return { res: null, data: null, netErr: e.name === "AbortError" ? t("服务器响应超时，请稍后再试") : t("网络连接失败") };
   } finally { clearTimeout(timer); }
 }
 
@@ -66,8 +67,8 @@ export async function signIn(email, password) {
   const { res, data, netErr } = await authFetch("/auth/v1/token?grant_type=password", { email, password });
   if (netErr) return { error: netErr };
   if (!res.ok || !data?.access_token) {
-    const msg = data?.error_description || data?.msg || data?.error?.message || "登录失败";
-    return { error: /invalid login/i.test(msg) ? "邮箱或密码不对" : msg };
+    const msg = data?.error_description || data?.msg || data?.error?.message || t("登录失败");
+    return { error: /invalid login/i.test(msg) ? t("邮箱或密码不对") : msg };
   }
   const uid = data.user?.id;
   const profile = await fetchProfile(uid, data.access_token);
@@ -91,7 +92,7 @@ async function ensureProfile(user, token) {
   const have = await fetchProfile(user.id, token);
   if (have) return have;
   const meta = user.user_metadata || {};
-  const name = meta.full_name || (user.email || "").split("@")[0] || "用户";
+  const name = meta.full_name || (user.email || "").split("@")[0] || "用户";   // i18n-ignore（存进网站资料的默认名）
   // 用户名和网站用 Google 登录时建的一样：邮箱前缀 + "_" + id 前 4 位（App.jsx 的 landAuth）；撞了再换
   const base = `${(user.email || "user").split("@")[0]}_${user.id.slice(0, 4)}`;
   for (let i = 0; i < 4; i++) {
@@ -112,7 +113,7 @@ async function ensureProfile(user, token) {
 }
 
 export async function signInWithGoogle() {
-  if (!chrome.identity?.launchWebAuthFlow) return { error: "这个浏览器不支持弹出 Google 登录" };
+  if (!chrome.identity?.launchWebAuthFlow) return { error: t("这个浏览器不支持弹出 Google 登录") };
   const verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
   const redirect = chrome.identity.getRedirectURL("supabase");
@@ -120,17 +121,20 @@ export async function signInWithGoogle() {
               `&code_challenge=${challenge}&code_challenge_method=s256`;
   let back;
   try { back = await chrome.identity.launchWebAuthFlow({ url, interactive: true }); }
-  catch (e) { return { error: /cancel|closed|did not approve/i.test(e?.message || "") ? "已取消" : `Google 登录没有完成：${e?.message || e}` }; }
+  catch (e) {
+    const cancelled = /cancel|closed|did not approve/i.test(e?.message || "");
+    return { error: cancelled ? t("已取消") : t("Google 登录没有完成：{err}", { err: e?.message || e }), cancelled };
+  }
   const u = new URL(back);
   const q = new URLSearchParams(u.search + "&" + u.hash.replace(/^#/, ""));
   const code = q.get("code");
   if (!code) {
-    const msg = q.get("error_description") || q.get("error") || "没有拿到登录结果";
-    return { error: /provider is not enabled|unsupported provider/i.test(msg) ? "网站还没打开 Google 登录（Supabase 后台 → Authentication → Providers → Google）" : msg };
+    const msg = q.get("error_description") || q.get("error") || t("没有拿到登录结果");
+    return { error: /provider is not enabled|unsupported provider/i.test(msg) ? t("网站还没打开 Google 登录（Supabase 后台 → Authentication → Providers → Google）") : msg };
   }
   const { res, data, netErr } = await authFetch("/auth/v1/token?grant_type=pkce", { auth_code: code, code_verifier: verifier });
   if (netErr) return { error: netErr };
-  if (!res.ok || !data?.access_token) return { error: data?.error_description || data?.msg || "Google 登录失败" };
+  if (!res.ok || !data?.access_token) return { error: data?.error_description || data?.msg || t("Google 登录失败") };
   const profile = await ensureProfile(data.user, data.access_token);
   const s = {
     access_token: data.access_token, refresh_token: data.refresh_token,

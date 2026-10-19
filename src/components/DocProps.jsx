@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { t } from "../lib/i18n";
 
 /**
  * 文档属性（点阅读器左上角的标题打开，参照 Edge / Chrome 的「文档属性」）。
@@ -16,8 +17,8 @@ function pageSizeText(size) {
   const w = size.width * PT2MM, h = size.height * PT2MM;
   const [a, b] = [Math.min(w, h), Math.max(w, h)];
   const name = PAPER_SIZES.find(([, x, y]) => Math.abs(a - x) < 2 && Math.abs(b - y) < 2)?.[0];
-  const dir = h >= w ? "纵向" : "横向";
-  return `${Math.round(w)} × ${Math.round(h)} 毫米（${name ? `${name}，` : ""}${dir}）`;
+  const dir = h >= w ? t("纵向") : t("横向");
+  return t("{w} × {h} 毫米（{name}{dir}）", { w: Math.round(w), h: Math.round(h), name: name ? `${name}${t("，")}` : "", dir });
 }
 
 /** PDF 日期 D:YYYYMMDDHHmmSS+08'00' → 本地时间文字 */
@@ -47,8 +48,8 @@ function identityText(paperKey) {
     return `arXiv ${m[1]}${m[2] ? ` v${m[2]}` : ""}`;
   }
   if (/^doi:/.test(paperKey)) return `DOI ${paperKey.slice(4)}`;
-  if (/^file:sha256:/.test(paperKey)) return "按文件内容识别（这份 PDF 没有文件编号；内容一改就认不出了）";
-  if (/^file:/.test(paperKey)) return "按 PDF 文件编号识别（在别的软件里加标注保存后也认得出）";
+  if (/^file:sha256:/.test(paperKey)) return t("按文件内容识别（这份 PDF 没有文件编号；内容一改就认不出了）");
+  if (/^file:/.test(paperKey)) return t("按 PDF 文件编号识别（在别的软件里加标注保存后也认得出）");
   return paperKey || "-";
 }
 
@@ -72,13 +73,13 @@ export default function DocProps({ doc, url, localName, paperKey, annCount, onCl
   const fileName = localName || (() => { try { const n = decodeURIComponent(new URL(url).pathname.split("/").pop()); return n ? (/\.pdf$/i.test(n) ? n : `${n}.pdf`) : "-"; } catch { return "-"; } })();
   const v = (s) => (s ? s : "-");
   const groups = [
-    [["文件名", fileName], ["文件大小", doc?.bytes ? sizeText(doc.bytes.byteLength) : "-"], ["位置", where]],
-    [["标题", v(p?.Title)], ["作者", v(p?.Author)], ["主题", v(p?.Subject)], ["关键字", v(p?.Keywords)],
-     ["创建时间", p?.CreationDate ? pdfDate(p.CreationDate) : "-"], ["修改时间", p?.ModDate ? pdfDate(p.ModDate) : "-"],
-     ["应用", v(p?.Creator)]],
-    [["PDF 制作工具", v(p?.Producer)], ["PDF 版本", v(p?.version)], ["页数", doc ? String(doc.numPages) : "-"],
-     ["页面尺寸", pageSizeText(doc?.pages?.[0]?.size)], ["快速 Web 查看", linearized(doc?.bytes) ? "是" : "否"]],
-    [["识别为", identityText(paperKey)], ["我的标注", `${annCount} 条`]],
+    [[t("文件名"), fileName], [t("文件大小"), doc?.bytes ? sizeText(doc.bytes.byteLength) : "-"], [t("位置"), where]],
+    [[t("标题"), v(p?.Title)], [t("作者"), v(p?.Author)], [t("主题"), v(p?.Subject)], [t("关键字"), v(p?.Keywords)],
+     [t("创建时间"), p?.CreationDate ? pdfDate(p.CreationDate) : "-"], [t("修改时间"), p?.ModDate ? pdfDate(p.ModDate) : "-"],
+     [t("应用"), v(p?.Creator)]],
+    [[t("PDF 制作工具"), v(p?.Producer)], [t("PDF 版本"), v(p?.version)], [t("页数"), doc ? String(doc.numPages) : "-"],
+     [t("页面尺寸"), pageSizeText(doc?.pages?.[0]?.size)], [t("快速 Web 查看"), linearized(doc?.bytes) ? t("是") : t("否")]],
+    [[t("识别为"), identityText(paperKey)], [t("我的标注"), t("{n} 条", { n: annCount })]],
   ];
 
   return createPortal(
@@ -87,8 +88,8 @@ export default function DocProps({ doc, url, localName, paperKey, annCount, onCl
       <div className="w-full max-w-[480px] max-h-[90vh] flex flex-col overflow-hidden rounded-xl bg-[#323639]
                       border border-[#ffffff26] shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
         <div className="relative h-12 shrink-0 flex items-center justify-center border-b border-[#00000040]">
-          <span className="text-[14.5px] text-[#fff] font-bold">文档属性</span>
-          <button onClick={onClose} title="关闭（Esc）"
+          <span className="text-[14.5px] text-[#fff] font-bold">{t("文档属性")}</span>
+          <button onClick={onClose} title={t("关闭（Esc）")}
             className="absolute right-2 w-8 h-8 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer text-[#c8c8c8] hover:bg-[#ffffff1a]">
             ✕
           </button>
@@ -96,7 +97,7 @@ export default function DocProps({ doc, url, localName, paperKey, annCount, onCl
         <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar px-5 py-1">
           {groups.map((g, i) => (
             <div key={i} className={`py-2.5 ${i ? "border-t border-[#ffffff14]" : ""}`}>
-              {i === 3 && <div className="text-[11.5px] text-[#7ec8e3] font-bold pb-1">本插件</div>}
+              {i === 3 && <div className="text-[11.5px] text-[#7ec8e3] font-bold pb-1">{t("本插件")}</div>}
               {g.map(([k, val]) => (
                 <div key={k} className="flex gap-3 py-[5px] text-[13px] leading-snug">
                   <span className="w-[96px] shrink-0 text-[#9a9a9a]">{k}</span>

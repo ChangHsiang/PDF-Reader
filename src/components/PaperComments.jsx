@@ -4,6 +4,7 @@ import { Avatar, UserLink, TimeText, MathText } from "./bits";
 import {
   fetchComments, addComment, deleteComment, toggleLike, notifyReply, notifyMentions,
 } from "../lib/comments";
+import { t } from "../lib/i18n";
 
 /**
  * 论文评论区（阅读器右侧栏）。数据和网站是同一张表，网站上看到的就是这里的。
@@ -42,7 +43,7 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
     setPosting(true); setErr("");
     const row = await addComment(paperKey, { content: text, me });
     setPosting(false);
-    if (!row) { setErr("发送失败了，稍后再试试"); return; }
+    if (!row) { setErr(t("发送失败了，稍后再试试")); return; }
     setComments(prev => [...(prev || []), row]);
     setText("");
     notifyMentions({ text: row.content, actorId: me.id, commentId: row.id, paperKey });
@@ -56,7 +57,7 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
       content: replyText, parentId: replyingTo.rootId, replyToUserId: replyingTo.replyToUserId, me,
     });
     setPosting(false);
-    if (!row) { setErr("发送失败了，稍后再试试"); return; }
+    if (!row) { setErr(t("发送失败了，稍后再试试")); return; }
     row.reply_to_profile = { id: replyingTo.replyToUserId, name: replyingTo.replyToName,
                              username: replyingTo.replyToUsername };
     setComments(prev => [...(prev || []), row]);
@@ -73,7 +74,7 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
     if (await deleteComment(id)) {
       // 子回复靠 parent_id 的 ON DELETE CASCADE 连带删掉，本地也照着去掉
       setComments(prev => (prev || []).filter(c => c.id !== id && c.parent_id !== id));
-    } else setErr("删除失败了");
+    } else setErr(t("删除失败了"));
   };
 
   const like = async (c) => {
@@ -93,7 +94,7 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
       rootId: root ? root.id : c.id,          // 楼中楼只有一层：回复挂在根评论下
       targetId: c.id,                          // 但输入框挂在被回复的那一条下面
       replyToUserId: c.user_id,
-      replyToName: c.profiles?.name || "用户",
+      replyToName: c.profiles?.name || t("用户"),
       replyToUsername: c.profiles?.username,
     });
     setReplyText("");
@@ -109,16 +110,16 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
   const item = (c, { isReply, root }) => (
     <div className="group flex gap-2 -mx-1.5 px-1.5 py-1.5 rounded-md hover:bg-[#ffffff0d]">
       <UserLink user={c.profiles} className="shrink-0 self-start">
-        <Avatar name={c.profiles?.name || "用户"} size={isReply ? 22 : 26} url={c.profiles?.avatar_url} />
+        <Avatar name={c.profiles?.name || t("用户")} size={isReply ? 22 : 26} url={c.profiles?.avatar_url} />
       </UserLink>
       <div className="flex-1 min-w-0">
         <div className="text-[11.5px] mb-0.5 flex items-center gap-1 flex-wrap leading-tight">
           <UserLink user={c.profiles} className="text-[#7ec8e3] font-semibold hover:underline">
-            {c.profiles?.name || "用户"}
+            {c.profiles?.name || t("用户")}
           </UserLink>
           {isReply && c.reply_to_profile?.name && (
             <>
-              <span className="text-[#8a8a8a]">回复</span>
+              <span className="text-[#8a8a8a]">{t("回复@@给谁")}</span>
               <UserLink user={c.reply_to_profile} className="text-[#7ec8e3] hover:underline">
                 @{c.reply_to_profile.name}
               </UserLink>
@@ -140,11 +141,11 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
             {(c.likes_count || 0) > 0 && <span className="tabular-nums">{c.likes_count}</span>}
           </button>
           <button onClick={() => startReply(c, root)}
-            className="text-[#8a8a8a] bg-transparent border-none cursor-pointer p-0 hover:text-[#7ec8e3]">回复</button>
+            className="text-[#8a8a8a] bg-transparent border-none cursor-pointer p-0 hover:text-[#7ec8e3]">{t("回复")}</button>
           {uid === c.user_id && (
             <button onClick={() => setConfirmDel(c.id)}
               className="hidden group-hover:inline text-[#8a8a8a] bg-transparent border-none cursor-pointer p-0 hover:text-[#ff9a9a]">
-              删除
+              {t("删除")}
             </button>
           )}
         </div>
@@ -155,7 +156,7 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
   const replyBoxFor = (id) => (replyingTo?.targetId === id ? (
     <div className="ml-7 mt-1.5">
       <Box value={replyText} onChange={setReplyText} onSubmit={submitReply} onCancel={() => setReplyingTo(null)}
-        placeholder={`回复 @${replyingTo.replyToName}…`} label="回复" busy={posting} autoFocus />
+        placeholder={t("回复 @{name}…", { name: replyingTo.replyToName })} label={t("回复")} busy={posting} autoFocus />
     </div>
   ) : null);
 
@@ -164,12 +165,12 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
       <div className="shrink-0 px-3 pt-3 pb-3 border-b border-[#00000040]">
         {me ? (
           <Box value={text} onChange={setText} onSubmit={submit}
-            placeholder="说说你对这篇论文的看法…" label="评论" busy={posting} />
+            placeholder={t("说说你对这篇论文的看法…")} label={t("评论")} busy={posting} />
         ) : (
           <button onClick={onLogin}
             className="w-full text-left text-[12.5px] text-[#b8b8b8] rounded-lg bg-[#00000040] border border-[#ffffff26]
                        px-3 py-2 cursor-pointer hover:border-[#ffffff59]">
-            登录 ResearchHub 后参与讨论
+            {t("登录 ResearchHub 后参与讨论")}
           </button>
         )}
         {err && <div className="mt-2 text-[11.5px] text-[#ff9a9a]">{err}</div>}
@@ -177,30 +178,30 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
 
       <div className="flex-1 overflow-y-auto overscroll-contain thin-scrollbar px-3 py-2">
         {comments === null ? (
-          <div className="text-[#9a9a9a] text-[12px] text-center py-4">加载中…</div>
+          <div className="text-[#9a9a9a] text-[12px] text-center py-4">{t("加载中…")}</div>
         ) : comments === false ? (
           <div className="text-[#9a9a9a] text-[12px] text-center py-4 leading-relaxed">
             {HAS_BACKEND ? (
               <>
-                评论加载不出来（网络或服务器问题）。
+                {t("评论加载不出来（网络或服务器问题）。")}
                 <button onClick={() => { setComments(null); load(); }}
-                  className="text-[#7ec8e3] bg-transparent border-none cursor-pointer underline p-0 ml-1">重试</button>
+                  className="text-[#7ec8e3] bg-transparent border-none cursor-pointer underline p-0 ml-1">{t("重试")}</button>
               </>
-            ) : "这个版本构建时没有配置评论服务（.env.local 里的 Supabase），评论用不了；笔记标注不受影响，存在本机。"}
+            ) : t("这个版本构建时没有配置评论服务（.env.local 里的 Supabase），评论用不了；笔记标注不受影响，存在本机。")}
           </div>
         ) : (
           <>
             {roots.length > 0 && (
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[11.5px] text-[#c8c8c8] font-semibold">{roots.length} 条评论</span>
+                <span className="text-[11.5px] text-[#c8c8c8] font-semibold">{t("{n} 条评论", { n: roots.length })}</span>
                 <button onClick={() => setSort(s => (s === "newest" ? "oldest" : "newest"))}
                   className="px-1.5 py-0.5 rounded text-[11px] text-[#b8b8b8] bg-transparent border-none cursor-pointer hover:bg-[#ffffff14]">
-                  {sort === "newest" ? "↓ 最新" : "↑ 最早"}
+                  {sort === "newest" ? t("↓ 最新") : t("↑ 最早")}
                 </button>
               </div>
             )}
             {roots.length === 0 && (
-              <div className="text-[#9a9a9a] text-[12px] text-center py-4">还没有人评论这篇论文，来说第一句吧</div>
+              <div className="text-[#9a9a9a] text-[12px] text-center py-4">{t("还没有人评论这篇论文，来说第一句吧")}</div>
             )}
             {roots.map(root => (
               <div key={root.id} className="pb-2 mb-2 border-b border-[#ffffff14] last:border-b-0">
@@ -222,7 +223,7 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
         {sitePaperUrl && (
           <a href={sitePaperUrl} target="_blank" rel="noopener noreferrer"
             className="block text-center text-[11px] text-[#8a8a8a] hover:text-[#7ec8e3] no-underline py-3">
-            在 ResearchHub 论文页查看站内讨论 ↗
+            {t("在 ResearchHub 论文页查看站内讨论 ↗")}
           </a>
         )}
       </div>
@@ -231,13 +232,13 @@ export default function PaperComments({ paperKey, me, onLogin, sitePaperUrl, onC
         <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in"
           onClick={e => { if (e.target === e.currentTarget) setConfirmDel(null); }}>
           <div className="w-full max-w-[300px] rounded-xl bg-[#323639] border border-[#ffffff26] p-4">
-            <div className="text-[13.5px] text-[#fff] font-bold mb-1.5">删除这条评论？</div>
-            <div className="text-[12px] text-[#b8b8b8] leading-relaxed mb-3">底下的回复会跟着一起删掉，删除后无法恢复。</div>
+            <div className="text-[13.5px] text-[#fff] font-bold mb-1.5">{t("删除这条评论？")}</div>
+            <div className="text-[12px] text-[#b8b8b8] leading-relaxed mb-3">{t("底下的回复会跟着一起删掉，删除后无法恢复。")}</div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmDel(null)}
-                className="h-8 px-3 rounded-full text-[12.5px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">取消</button>
+                className="h-8 px-3 rounded-full text-[12.5px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">{t("取消")}</button>
               <button onClick={doDelete}
-                className="h-8 px-4 rounded-full text-[12.5px] text-[#fff] bg-[#c0392b] border-none cursor-pointer hover:bg-[#a93226]">删除</button>
+                className="h-8 px-4 rounded-full text-[12.5px] text-[#fff] bg-[#c0392b] border-none cursor-pointer hover:bg-[#a93226]">{t("删除")}</button>
             </div>
           </div>
         </div>
@@ -262,17 +263,17 @@ function Box({ value, onChange, onSubmit, onCancel, placeholder, label, busy, au
         className="w-full resize-none rounded-lg bg-[#00000059] border border-[#ffffff33] px-2.5 py-2
                    text-[12.5px] text-[#fff] outline-none placeholder:text-[#ffffff59] focus:border-[#ffffff80]" />
       <div className="flex items-center justify-end gap-2 mt-1.5">
-        <span className="flex-1 text-[10.5px] text-[#6f6f6f]">Ctrl+Enter 发送</span>
+        <span className="flex-1 text-[10.5px] text-[#6f6f6f]">{t("Ctrl+Enter 发送")}</span>
         {onCancel && (
           <button onClick={onCancel}
             className="h-7 px-3 rounded-full text-[12px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">
-            取消
+            {t("取消")}
           </button>
         )}
         <button onClick={onSubmit} disabled={busy || !value.trim()}
           className="h-7 px-3.5 rounded-full text-[12px] font-bold text-[#10232c] bg-[#7ec8e3] border-none cursor-pointer
                      hover:bg-[#9ad5ea] disabled:opacity-40 disabled:cursor-default">
-          {busy ? "发送中…" : label}
+          {busy ? t("发送中…") : label}
         </button>
       </div>
     </div>

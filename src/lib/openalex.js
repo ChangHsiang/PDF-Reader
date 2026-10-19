@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 /**
  * 文献卡片上的「所有 N 个版本」—— 数据来自 OpenAlex；「相关文章」用 Semantic Scholar 的推荐（见文件末尾）（免费、免 key、有 CORS）。
  * Google 学术那两个链接靠的是它内部的 cluster id，没有公开接口拿不到，所以换成 OpenAlex：
@@ -41,13 +42,13 @@ export async function allVersions(id) {
     let host = null;
     try { host = new URL(l.landing_page_url || l.pdf_url).hostname.replace(/^www\./, ""); } catch { /* 没链接 */ }
     return {
-      source: dedupeName(l.source?.display_name) || host || "未知来源",
+      source: dedupeName(l.source?.display_name) || host || t("未知来源"),
       host,
       url: l.landing_page_url || null,
       pdfUrl: l.pdf_url || null,
       oa: !!l.is_oa,
-      version: l.version === "publishedVersion" ? "正式发表版" : l.version === "acceptedVersion" ? "接收稿" :
-               l.version === "submittedVersion" ? "预印本" : null,
+      version: l.version === "publishedVersion" ? t("正式发表版") : l.version === "acceptedVersion" ? t("接收稿") :
+               l.version === "submittedVersion" ? t("预印本") : null,
     };
   });
 }
@@ -72,7 +73,7 @@ export async function relatedFor(card) {
           const ax = p.externalIds?.ArXiv;
           return {
             title: p.title,
-            authors: names.length > 3 ? `${names.slice(0, 3).join(", ")} 等` : names.join(", "),
+            authors: names.length > 3 ? t("{names} 等", { names: names.slice(0, 3).join(", ") }) : names.join(", "),
             venue: p.venue || null, year: p.year, citations: p.citationCount,
             url: ax ? `https://arxiv.org/abs/${ax}` : p.externalIds?.DOI ? `https://doi.org/${p.externalIds.DOI}` : p.url,
             pdfUrl: ax ? `https://arxiv.org/pdf/${ax}` : p.openAccessPdf?.url || null,

@@ -9,6 +9,7 @@ import { listLibrary, syncAll } from "../lib/notes";
 import { SITE_URL, profileUrl } from "../lib/config";
 import { fileNameOf } from "../lib/localPdf";
 import OpenPdfToggles from "../components/OpenPdfToggles";
+import { t } from "../lib/i18n";
 
 const Switch = ({ on, onClick }) => (
   <button onClick={onClick} role="switch" aria-checked={on}
@@ -38,7 +39,7 @@ function Popup() {
   const doSync = async () => {
     setSync({ busy: true, msg: "" });
     const r = await syncAll(uid);
-    setSync({ busy: false, msg: r.ok ? "已同步" : r.error });
+    setSync({ busy: false, ok: r.ok, msg: r.ok ? t("已同步") : r.error });
     refresh();
   };
 
@@ -62,7 +63,7 @@ function Popup() {
             <button onClick={() => { if (!signOutArmed) { setSignOutArmed(true); return; } signOut(); }}
               className={`h-7 px-2.5 rounded-full text-[11.5px] bg-transparent border cursor-pointer whitespace-nowrap
                 ${signOutArmed ? "text-[#ff8a80] border-[#ff8a8066] bg-[#ff8a801a]" : "text-[#c8c8c8] border-[#ffffff33] hover:bg-[#ffffff1a]"}`}>
-              {signOutArmed ? "再点一下退出" : "退出"}
+              {signOutArmed ? t("再点一下退出") : t("退出")}
             </button>
           </>
         ) : loginOpen ? (
@@ -70,11 +71,11 @@ function Popup() {
         ) : (
           <>
             <div className="flex-1 text-[12px] text-[#b8b8b8] leading-relaxed">
-              笔记只存在这台电脑上。<br />登录 ResearchHub 可同步到网站、参与评论。
+              {t("笔记只存在这台电脑上。")}<br />{t("登录 ResearchHub 可同步到网站、参与评论。")}
             </div>
             <button onClick={() => setLoginOpen(true)}
               className="h-8 px-3.5 rounded-full text-[12.5px] font-bold text-[#10232c] bg-[#7ec8e3] border-none cursor-pointer hover:bg-[#9ad5ea]">
-              登录
+              {t("登录")}
             </button>
           </>
         )}
@@ -84,23 +85,23 @@ function Popup() {
         <div className="flex flex-col"><OpenPdfToggles Switch={Switch} compact /></div>
         {uid && (
           <div className="flex items-center gap-2">
-            <span className={`flex-1 text-[11.5px] ${sync.msg && sync.msg !== "已同步" ? "text-[#ff9a9a]" : "text-[#9a9a9a]"}`}>
-              {sync.busy ? "同步中…" : sync.msg || (pending ? `${pending} 条改动待同步` : "笔记已和网站同步")}
+            <span className={`flex-1 text-[11.5px] ${sync.msg && sync.ok === false ? "text-[#ff9a9a]" : "text-[#9a9a9a]"}`}>
+              {sync.busy ? t("同步中…") : sync.msg || (pending ? t("{n} 条改动待同步", { n: pending }) : t("笔记已和网站同步"))}
             </span>
             <button onClick={doSync} disabled={sync.busy}
               className="h-7 px-2.5 rounded-full text-[11.5px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer
                          hover:bg-[#ffffff1a] disabled:opacity-50">
-              全部同步
+              {t("全部同步")}
             </button>
           </div>
         )}
       </div>
 
-      <div className="px-4 pt-2.5 pb-1 text-[11.5px] text-[#9a9a9a] font-bold">我的笔记</div>
+      <div className="px-4 pt-2.5 pb-1 text-[11.5px] text-[#9a9a9a] font-bold">{t("我的笔记")}</div>
       <div className="flex-1 overflow-y-auto thin-scrollbar px-2 pb-2 min-h-[80px]">
         {lib === null ? null : lib.length === 0 ? (
           <div className="px-2 py-3 text-[12px] text-[#9a9a9a] leading-relaxed">
-            还没有笔记。打开任意一篇 arXiv 论文的 PDF，选中文字就能高亮、划线、写批注。
+            {t("还没有笔记。打开任意一篇 arXiv 论文的 PDF，选中文字就能高亮、划线、写批注。")}
           </div>
         ) : lib.map(p => {
           // 本地文件（file:…）：标「本地」，显示文件名；点它按原来的路径重新打开（文件挪走了阅读器会提示）
@@ -113,10 +114,10 @@ function Popup() {
             <div className="text-[12.5px] text-[#fff] leading-snug line-clamp-2">{p.title || fname || p.base.replace(/^arxiv:/, "arXiv:")}</div>
             <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[#9a9a9a]">
               {local
-                ? <><span className="px-1 rounded bg-[#ffffff1a] text-[#c8c8c8]">本地</span><span className="truncate max-w-[150px]">{fname || "本地文件"}</span></>
+                ? <><span className="px-1 rounded bg-[#ffffff1a] text-[#c8c8c8]">{t("本地")}</span><span className="truncate max-w-[150px]">{fname || t("本地文件")}</span></>
                 : <span>{p.base.replace(/^arxiv:/, "arXiv:")}</span>}
-              <span>{p.count} 条</span>
-              {uid && p.pending > 0 && <span className="text-[#ffcf7a]">{p.pending} 待同步</span>}
+              <span>{t("{n} 条", { n: p.count })}</span>
+              {uid && p.pending > 0 && <span className="text-[#ffcf7a]">{t("{n} 待同步", { n: p.pending })}</span>}
               <span className="flex-1" />
               <TimeText ts={p.updated} />
             </div>

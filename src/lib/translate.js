@@ -1,4 +1,5 @@
 import { getSettings } from "./settings";
+import { t } from "./i18n";
 
 /**
  * 划词翻译。服务按设置选（见 lib/settings）：
@@ -11,10 +12,10 @@ import { getSettings } from "./settings";
 
 /** 能译成的语言。code 是设置里存的值；google / bing 是两家各自的语言代码；name 给大模型的提示词用 */
 export const LANGS = [
-  { code: "zh", label: "简体中文", google: "zh-CN", bing: "zh-Hans", name: "Simplified Chinese" },
-  { code: "zh-TW", label: "繁體中文", google: "zh-TW", bing: "zh-Hant", name: "Traditional Chinese" },
+  { code: "zh", label: "简体中文", google: "zh-CN", bing: "zh-Hans", name: "Simplified Chinese" },   // i18n-ignore（语言用自己的名字）
+  { code: "zh-TW", label: "繁體中文", google: "zh-TW", bing: "zh-Hant", name: "Traditional Chinese" },   // i18n-ignore
   { code: "en", label: "English", google: "en", bing: "en", name: "English" },
-  { code: "ja", label: "日本語", google: "ja", bing: "ja", name: "Japanese" },
+  { code: "ja", label: "日本語", google: "ja", bing: "ja", name: "Japanese" },   // i18n-ignore
   { code: "ko", label: "한국어", google: "ko", bing: "ko", name: "Korean" },
   { code: "fr", label: "Français", google: "fr", bing: "fr", name: "French" },
   { code: "de", label: "Deutsch", google: "de", bing: "de", name: "German" },
@@ -45,11 +46,11 @@ async function viaGoogle(text, target) {
   const tl = langOf(target).google;
   const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${tl}&dt=t&q=${encodeURIComponent(text.slice(0, 4500))}`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error(`Google 翻译返回 ${r.status}`);
+  if (!r.ok) throw new Error(t("Google 翻译返回 {s}", { s: r.status }));
   const d = await r.json();
   const out = (d?.[0] || []).map(x => x?.[0] || "").join("");
-  if (!out) throw new Error("没有拿到译文");
-  return { text: out, engine: "Google 翻译" };
+  if (!out) throw new Error(t("没有拿到译文"));
+  return { text: out, engine: t("Google 翻译") };
 }
 
 /**
@@ -64,11 +65,11 @@ let bingSession = null;
 async function bingToken() {
   if (bingSession && Date.now() < bingSession.exp) return bingSession;
   const r = await fetch("https://www.bing.com/translator", { credentials: "include" });
-  if (!r.ok) throw new Error(`必应翻译网页打不开（${r.status}）`);
+  if (!r.ok) throw new Error(t("必应翻译网页打不开（{s}）", { s: r.status }));
   const html = await r.text();
   const ig = html.match(/IG:"([0-9A-F]+)"/)?.[1];
   const ap = html.match(/params_AbusePreventionHelper\s*=\s*\[(\d+),"([^"]+)"/);
-  if (!ig || !ap) throw new Error("必应翻译网页改版了，暂时用不了（换 Google 或其他服务试试）");
+  if (!ig || !ap) throw new Error(t("必应翻译网页改版了，暂时用不了（换 Google 或其他服务试试）"));
   // iid 是网页上翻译框的固定编号
   bingSession = { origin: new URL(r.url).origin, ig, iid: "translator.5024", key: ap[1], token: ap[2], exp: Date.now() + 50 * 60e3 };
   return bingSession;
@@ -82,11 +83,11 @@ async function viaBing(text, target) {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ fromLang: "auto-detect", to: langOf(target).bing, text: text.slice(0, 1000), token: t.token, key: t.key }),
     });
-    if (!r.ok) throw new Error(`必应翻译返回 ${r.status}`);
+    if (!r.ok) throw new Error(t("必应翻译返回 {s}", { s: r.status }));
     const d = await r.json().catch(() => null);
     const out = Array.isArray(d) ? d[0]?.translations?.[0]?.text : null;
-    if (!out) throw new Error(d?.ShowCaptcha ? "必应翻译要求人机验证，暂时用不了（换 Google 或其他服务试试）" : "必应翻译没有返回译文");
-    return { text: out, engine: "必应翻译" };
+    if (!out) throw new Error(d?.ShowCaptcha ? t("必应翻译要求人机验证，暂时用不了（换 Google 或其他服务试试）") : t("必应翻译没有返回译文"));
+    return { text: out, engine: t("必应翻译") };
   } catch (e) {
     bingSession = null;
     throw e;
@@ -100,7 +101,7 @@ export const chatUrl = (baseUrl) => {
 };
 
 export async function viaCustom(text, target, api) {
-  if (!api?.baseUrl || !api?.model) throw new Error("自定义翻译接口还没填完整（设置里填地址和模型）");
+  if (!api?.baseUrl || !api?.model) throw new Error(t("自定义翻译接口还没填完整（设置里填地址和模型）"));
   let r;
   try {
     r = await fetch(chatUrl(api.baseUrl), {
@@ -112,21 +113,21 @@ export async function viaCustom(text, target, api) {
       }),
     });
   } catch (e) {
-    throw new Error(`连不上自定义接口：${e.message}（地址对吗？有没有授权访问这个网站？）`);
+    throw new Error(t("连不上自定义接口：{err}（地址对吗？有没有授权访问这个网站？）", { err: e.message }));
   }
   if (!r.ok) {
     const detail = (await r.text().catch(() => "")).slice(0, 160);
-    throw new Error(`自定义接口返回 ${r.status}${detail ? `：${detail}` : ""}`);
+    throw new Error(t("自定义接口返回 {s}", { s: r.status }) + (detail ? `: ${detail}` : ""));
   }
   const d = await r.json().catch(() => null);
   const out = d?.choices?.[0]?.message?.content?.trim();
-  if (!out) throw new Error("自定义接口没有返回译文");
+  if (!out) throw new Error(t("自定义接口没有返回译文"));
   return { text: out, engine: api.model };
 }
 
 export async function translate(raw) {
   const text = cleanForTranslate(raw);
-  if (!text) throw new Error("没有可翻译的文字");
+  if (!text) throw new Error(t("没有可翻译的文字"));
   const s = await getSettings();
   const target = langOf(s.translateTarget).code;
   const engine = s.translateEngine;

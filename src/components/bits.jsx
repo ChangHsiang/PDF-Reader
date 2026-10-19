@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { profileUrl } from "../lib/config";
+import { t as tr } from "../lib/i18n";
 
 /* 小零件：头像、相对时间、带公式的文本、用户名链接。
    都活在固定深色底上，白色一律写死 #fff / #ffffffXX */
@@ -12,7 +13,7 @@ const colorOf = (name = "") => PALETTE[[...name].reduce((s, c) => s + c.charCode
 const initials = (name = "") => {
   const t = name.trim();
   if (!t) return "?";
-  if (/[一-鿿]/.test(t[0])) return t.slice(-2);
+  if (/[一-鿿]/.test(t[0])) return t.slice(-2);   // i18n-ignore
   return t.split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
 };
 
@@ -46,10 +47,10 @@ const toDate = (ts) => new Date(typeof ts === "string" && /T\d\d:\d\d(:\d\d(\.\d
 
 function timeAgo(d) {
   const s = (Date.now() - d.getTime()) / 1000;
-  if (s < 60) return "刚刚";
-  if (s < 3600) return `${Math.floor(s / 60)} 分钟前`;
-  if (s < 86400) return `${Math.floor(s / 3600)} 小时前`;
-  if (s < 86400 * 30) return `${Math.floor(s / 86400)} 天前`;
+  if (s < 60) return tr("刚刚");
+  if (s < 3600) return tr("{n} 分钟前", { n: Math.floor(s / 60) });
+  if (s < 86400) return tr("{n} 小时前", { n: Math.floor(s / 3600) });
+  if (s < 86400 * 30) return tr("{n} 天前", { n: Math.floor(s / 86400) });
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 

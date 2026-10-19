@@ -1,4 +1,5 @@
 import { sharedPdfium } from "./pdfium/client";
+import { t } from "./i18n";
 
 /**
  * 本地 PDF（file:// 打开的）：认出「这是哪一篇」，给笔记当身份（paperKey）。
@@ -48,11 +49,11 @@ export async function identifyPdf(url, { online = false } = {}) {
   let buf;
   try {
     const r = await fetch(url, online ? { credentials: "include" } : undefined);
-    if (!r.ok) throw new Error(`下载 PDF 失败（${r.status}）`);
+    if (!r.ok) throw Object.assign(new Error(t("下载 PDF 失败（{s}）", { s: r.status })), { http: true });
     buf = await r.arrayBuffer();
   } catch (e) {
-    if (online) throw new Error(e?.message?.startsWith("下载") ? e.message : "下载 PDF 失败（网络或权限）");
-    throw new FileAccessError("读不到这个本地文件");
+    if (online) throw new Error(e?.http ? e.message : t("下载 PDF 失败（网络或权限）"));
+    throw new FileAccessError(t("读不到这个本地文件"));
   }
   prefetched.set(url, buf.slice(0));
   const name = fileNameOf(url);

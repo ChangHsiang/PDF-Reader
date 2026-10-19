@@ -7,6 +7,7 @@ import { exportBackup, importBackup, currentStats } from "../lib/backup";
 import { GOOGLE_CLIENT_ID } from "../lib/config";
 import OpenPdfToggles from "./OpenPdfToggles";
 import { DeleteButton } from "./PdfNotes";
+import { t, rememberLang } from "../lib/i18n";
 
 /**
  * 阅读器顶栏「设置」：阅读 + 翻译两组。
@@ -14,7 +15,7 @@ import { DeleteButton } from "./PdfNotes";
  * （manifest 里是 optional_host_permissions，用到哪个才申请哪个，不在安装时就要「所有网站」）。
  */
 
-const TABS = [["read", "阅读"], ["trans", "翻译"], ["sync", "同步"], ["data", "数据"], ["about", "版本"]];
+const TABS = [["read", t("阅读")], ["trans", t("翻译")], ["sync", t("同步")], ["data", t("数据")], ["about", t("版本")]];
 
 const Switch = ({ on, onClick }) => (
   <button onClick={onClick} role="switch" aria-checked={on}
@@ -108,9 +109,9 @@ export default function SettingsDialog({ onClose }) {
   /** 申请访问自定义接口所在网站的权限。必须在点击事件里调（浏览器要求用户手势） */
   const grant = async () => {
     let origin;
-    try { origin = new URL(api.baseUrl.trim()).origin; } catch { throw new Error("接口地址不是一个有效的网址"); }
+    try { origin = new URL(api.baseUrl.trim()).origin; } catch { throw new Error(t("接口地址不是一个有效的网址")); }
     const ok = await chrome.permissions.request({ origins: [`${origin}/*`] });
-    if (!ok) throw new Error("没有授权访问这个网站，插件调不了这个接口");
+    if (!ok) throw new Error(t("没有授权访问这个网站，插件调不了这个接口"));
   };
 
   const saveApi = async () => {
@@ -133,7 +134,7 @@ export default function SettingsDialog({ onClose }) {
   };
 
   const [tab, setTab] = useState(() => {
-    try { const t = localStorage.getItem("rh_settings_tab"); if (TABS.some(x => x[0] === t)) return t; } catch { /* 读不了就默认 */ }
+    try { const v = localStorage.getItem("rh_settings_tab"); if (TABS.some(x => x[0] === v)) return v; } catch { /* 读不了就默认 */ }
     return "read";
   });
   const pickTab = (k) => { setTab(k); try { localStorage.setItem("rh_settings_tab", k); } catch { /* 存不了不要紧 */ } };
@@ -150,8 +151,8 @@ export default function SettingsDialog({ onClose }) {
       <div className="w-full max-w-[680px] h-[min(560px,90vh)] flex flex-col overflow-hidden rounded-xl bg-[#323639]
                       border border-[#ffffff26] shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
         <div className="relative h-12 shrink-0 flex items-center justify-center border-b border-[#00000040]">
-          <span className="text-[14.5px] text-[#fff] font-bold">设置</span>
-          <button onClick={onClose} title="关闭（Esc）"
+          <span className="text-[14.5px] text-[#fff] font-bold">{t("设置")}</span>
+          <button onClick={onClose} title={t("关闭（Esc）")}
             className="absolute right-2 w-8 h-8 rounded-full flex items-center justify-center bg-transparent border-none cursor-pointer text-[#c8c8c8] hover:bg-[#ffffff1a]">
             ✕
           </button>
@@ -170,12 +171,17 @@ export default function SettingsDialog({ onClose }) {
           ))}
         </nav>
         <div className="flex-1 min-w-0 overflow-y-auto thin-scrollbar px-5 py-2">
-          <div className="text-[14px] text-[#fff] font-bold pt-2 pb-1">{TABS.find(t => t[0] === tab)?.[1]}</div>
+          <div className="text-[14px] text-[#fff] font-bold pt-2 pb-1">{TABS.find(x => x[0] === tab)?.[1]}</div>
           {tab === "read" && (<>
+          {/* 界面语言：改了整页刷新（文案在各模块加载时就定了，不做热切换） */}
+          <Row title={t("界面语言")}>
+            <Dropdown value={s.lang || "auto"} onChange={v => { rememberLang(v); setSettings({ lang: v }).then(() => location.reload()); }}
+              options={[["auto", t("跟随浏览器")], ["zh", "中文"], ["en", "English"]]} />
+          </Row>
           <OpenPdfToggles Switch={Switch} />
           <div className="py-2.5">
-            <div className="text-[13px] text-[#f2f2f2]">页面颜色</div>
-            <div className="text-[11.5px] text-[#9a9a9a] leading-snug mt-0.5 mb-2">把白底换成护眼色</div>
+            <div className="text-[13px] text-[#f2f2f2]">{t("页面颜色")}</div>
+            <div className="text-[11.5px] text-[#9a9a9a] leading-snug mt-0.5 mb-2">{t("把白底换成护眼色")}</div>
             <div className="flex gap-2">
               {PAPERS.map(p => (
                 <button key={p.key} onClick={() => setSettings({ paper: p.key })} title={p.label}
@@ -190,37 +196,37 @@ export default function SettingsDialog({ onClose }) {
               ))}
             </div>
           </div>
-          <Row title="公式旁显示「复制 LaTeX」按钮" desc="仅 arXiv 论文">
+          <Row title={t("公式旁显示「复制 LaTeX」按钮")} desc={t("仅 arXiv 论文")}>
             <Switch on={s.eqCopy} onClick={() => setSettings({ eqCopy: !s.eqCopy })} />
           </Row>
-          <Row title="标出所有链接" desc="所有链接加上蓝色下划线">
+          <Row title={t("标出所有链接")} desc={t("所有链接加上蓝色下划线")}>
             <Switch on={s.showLinks} onClick={() => setSettings({ showLinks: !s.showLinks })} />
           </Row>
 
           </>)}
           {tab === "trans" && (<>
-          <Row title="选中文字后直接翻译" desc="选中后直接弹出译文">
+          <Row title={t("选中文字后直接翻译")} desc={t("选中后直接弹出译文")}>
             <Switch on={s.autoTranslate} onClick={() => setSettings({ autoTranslate: !s.autoTranslate })} />
           </Row>
-          <Row title="译成">
+          <Row title={t("译成")}>
             <Dropdown value={s.translateTarget} onChange={v => setSettings({ translateTarget: v })}
               options={LANGS.map(l => [l.code, l.label])} />
           </Row>
           <div className="pb-2">
-            <Row title="翻译服务">
+            <Row title={t("翻译服务")}>
               <Dropdown value={s.translateEngine} onChange={v => setSettings({ translateEngine: v })}
-                options={[["google", "Google 翻译"], ["bing", "必应翻译"], ["custom", "自定义 API"]]} />
+                options={[["google", t("Google 翻译")], ["bing", t("必应翻译")], ["custom", t("自定义 API")]]} />
             </Row>
             <div className="text-[11.5px] text-[#9a9a9a] leading-snug -mt-1">
-              {s.translateEngine === "google" && "Google 翻译的公开接口，不用配置。"}
-              {s.translateEngine === "bing" && "必应翻译的网页接口，不用配置。"}
-              {s.translateEngine === "custom" && "兼容 OpenAI 格式的服务（DeepSeek、通义、Kimi 等），Key 只存在本机。"}
+              {s.translateEngine === "google" && t("Google 翻译的公开接口，不用配置。")}
+              {s.translateEngine === "bing" && t("必应翻译的网页接口，不用配置。")}
+              {s.translateEngine === "custom" && t("兼容 OpenAI 格式的服务（DeepSeek、通义、Kimi 等），Key 只存在本机。")}
             </div>
           </div>
 
           {s.translateEngine === "custom" && (
             <div className="flex flex-col gap-2 pb-3">
-              <label className="text-[12px] text-[#c8c8c8]">接口地址
+              <label className="text-[12px] text-[#c8c8c8]">{t("接口地址")}
                 <input className={`${field} mt-1`} placeholder="https://api.deepseek.com/v1"
                   value={api.baseUrl} onChange={e => setApi({ ...api, baseUrl: e.target.value })} />
               </label>
@@ -228,7 +234,7 @@ export default function SettingsDialog({ onClose }) {
                 <input className={`${field} mt-1`} type="password" placeholder="sk-…" autoComplete="off"
                   value={api.apiKey} onChange={e => setApi({ ...api, apiKey: e.target.value })} />
               </label>
-              <label className="text-[12px] text-[#c8c8c8]">模型
+              <label className="text-[12px] text-[#c8c8c8]">{t("模型")}
                 <input className={`${field} mt-1`} placeholder="deepseek-chat"
                   value={api.model} onChange={e => setApi({ ...api, model: e.target.value })} />
               </label>
@@ -237,15 +243,15 @@ export default function SettingsDialog({ onClose }) {
                 <button onClick={runTest} disabled={test === "busy"}
                   className={`${btn} text-[#c8c8c8] bg-transparent border border-[#ffffff33] hover:bg-[#ffffff1a] disabled:opacity-50`}
                   style={{ border: "1px solid #ffffff33" }}>
-                  {test === "busy" ? "测试中…" : "测试"}
+                  {test === "busy" ? t("测试中…") : t("测试")}
                 </button>
                 <button onClick={saveApi} className={`${btn} font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea]`}>
-                  {saved ? "✓ 已保存" : "保存"}
+                  {saved ? t("✓ 已保存") : t("保存")}
                 </button>
               </div>
               {test && test !== "busy" && (
                 <div className={`text-[12px] leading-relaxed rounded-md px-2.5 py-2 ${test.ok ? "text-[#7ee3a0] bg-[#7ee3a014]" : "text-[#ff9a9a] bg-[#ff9a9a14]"}`}>
-                  {test.ok ? `可以用：${test.msg}` : test.msg}
+                  {test.ok ? t("可以用：{msg}", { msg: test.msg }) : test.msg}
                 </div>
               )}
             </div>
@@ -253,13 +259,13 @@ export default function SettingsDialog({ onClose }) {
 
           </>)}
           {tab === "sync" && (<>
-          <Row title="在线论文的笔记" desc="自动：改完就同步；手动：点顶栏的同步按钮">
+          <Row title={t("在线论文的笔记")} desc={t("自动：改完就同步；手动：点顶栏的同步按钮")}>
             <Dropdown value={s.syncArxiv || "auto"} onChange={v => setSettings({ syncArxiv: v })}
-              options={[["auto", "自动同步"], ["manual", "手动同步"]]} />
+              options={[["auto", t("自动同步")], ["manual", t("手动同步")]]} />
           </Row>
-          <Row title="本地文件的笔记" desc="默认手动；只同步笔记，不传 PDF">
+          <Row title={t("本地文件的笔记")} desc={t("默认手动；只同步笔记，不传 PDF")}>
             <Dropdown value={s.syncLocal || "manual"} onChange={v => setSettings({ syncLocal: v })}
-              options={[["auto", "自动同步"], ["manual", "手动同步"]]} />
+              options={[["auto", t("自动同步")], ["manual", t("手动同步")]]} />
           </Row>
 
           </>)}
@@ -287,20 +293,20 @@ function VersionSection({ btn }) {
     <div className="flex flex-col gap-2 pb-3 text-[12.5px] text-[#c8c8c8]">
       <div className="flex items-center gap-2">
         <span className="flex-1">
-          当前版本 <b className="text-[#fff]">v{u.current}</b>
-          {u.checking ? <span className="ml-2 text-[#9a9a9a]">正在检查…</span>
-            : u.error ? <span className="ml-2 text-[#ff9a9a]">检查失败：{u.error}</span>
-            : u.latest && !u.hasNew ? <span className="ml-2 text-[#7ee3a0]">已是最新</span> : null}
+          {t("当前版本")} <b className="text-[#fff]">v{u.current}</b>
+          {u.checking ? <span className="ml-2 text-[#9a9a9a]">{t("正在检查…")}</span>
+            : u.error ? <span className="ml-2 text-[#ff9a9a]">{t("检查失败：{err}", { err: u.error })}</span>
+            : u.latest && !u.hasNew ? <span className="ml-2 text-[#7ee3a0]">{t("已是最新")}</span> : null}
         </span>
-        <button onClick={u.check} disabled={u.checking} className={`${ghost} disabled:opacity-50`} style={{ border: "1px solid #ffffff33" }}>检查更新</button>
+        <button onClick={u.check} disabled={u.checking} className={`${ghost} disabled:opacity-50`} style={{ border: "1px solid #ffffff33" }}>{t("检查更新")}</button>
       </div>
       {u.hasNew && (
         <div className="rounded-md bg-[#7ec8e314] border border-[#7ec8e340] px-3 py-2.5 flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <span className="flex-1 text-[#fff] font-bold">
-              有新版本 v{u.latest.version}
+              {t("有新版本 v{v}", { v: u.latest.version })}
               {date && <span className="ml-2 font-normal text-[11.5px] text-[#9a9a9a]">{date}</span>}
-              {u.ignored === u.latest.version && <span className="ml-2 font-normal text-[11.5px] text-[#9a9a9a]">（已忽略）</span>}
+              {u.ignored === u.latest.version && <span className="ml-2 font-normal text-[11.5px] text-[#9a9a9a]">{t("（已忽略）")}</span>}
             </span>
           </div>
           {u.latest.notes && (
@@ -311,17 +317,17 @@ function VersionSection({ btn }) {
             </div>
           )}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <button onClick={() => openTab(u.latest.zip)} className={`${btn} font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea]`}>下载</button>
-            <button onClick={() => openTab(u.latest.url)} className={ghost} style={{ border: "1px solid #ffffff33" }}>更新说明</button>
+            <button onClick={() => openTab(u.latest.zip)} className={`${btn} font-bold text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea]`}>{t("下载")}</button>
+            <button onClick={() => openTab(u.latest.url)} className={ghost} style={{ border: "1px solid #ffffff33" }}>{t("更新说明")}</button>
             <span className="flex-1" />
             {u.ignored === u.latest.version
-              ? <button onClick={u.unignore} className={ghost}>取消忽略</button>
-              : <button onClick={u.ignore} className={ghost}>忽略此版本</button>}
+              ? <button onClick={u.unignore} className={ghost}>{t("取消忽略")}</button>
+              : <button onClick={u.ignore} className={ghost}>{t("忽略此版本")}</button>}
           </div>
           <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
-            升级：解压后覆盖原来的文件夹，再到
-            <button onClick={openExtensionsPage} className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[11.5px]">扩展管理页</button>
-            点刷新。<b className="text-[#ffb36b] font-bold">不要点「移除」</b>，会删掉所有笔记。
+            {t("升级：解压后覆盖原来的文件夹，再到")}
+            <button onClick={openExtensionsPage} className="mx-1 p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[11.5px]">{t("扩展管理页")}</button>
+            {t("点刷新。")}<b className="text-[#ffb36b] font-bold">{t("不要点「移除」")}</b>{t("，会删掉所有笔记。")}
           </div>
         </div>
       )}
@@ -338,28 +344,28 @@ function DataSection({ btn }) {
   useEffect(() => { refresh(); }, []);
   const ghost = `${btn} text-[#c8c8c8] bg-transparent hover:bg-[#ffffff1a]`;
   const doExport = async () => {
-    try { const s = await exportBackup(); setMsg({ ok: true, text: `已导出：${s.papers} 篇论文、${s.anns} 条标注（文件在浏览器的下载文件夹里）` }); }
-    catch (e) { setMsg({ ok: false, text: `导出失败：${e.message}` }); }
+    try { const s = await exportBackup(); setMsg({ ok: true, text: t("已导出：{p} 篇论文、{a} 条标注（文件在浏览器的下载文件夹里）", { p: s.papers, a: s.anns }) }); }
+    catch (e) { setMsg({ ok: false, text: t("导出失败：{err}", { err: e.message }) }); }
   };
   const doImport = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    try { await importBackup(f); await refresh(); setMsg({ ok: true, text: "已导入（和现有的笔记合并，同一条留较新的）" }); }
+    try { await importBackup(f); await refresh(); setMsg({ ok: true, text: t("已导入（和现有的笔记合并，同一条留较新的）") }); }
     catch (err) { setMsg({ ok: false, text: err.message }); }
   };
   return (
     <div className="flex flex-col gap-2 pb-3 text-[12.5px] text-[#c8c8c8]">
       <div className="flex items-center gap-2">
         <span className="flex-1">
-          本机存着 <b className="text-[#fff]">{st ? `${st.papers} 篇论文、${st.anns} 条标注` : "…"}</b>
+          {t("本机存着")} <b className="text-[#fff]">{st ? t("{p} 篇论文、{a} 条标注", { p: st.papers, a: st.anns }) : "…"}</b>
         </span>
-        <button onClick={doExport} className={ghost} style={{ border: "1px solid #ffffff33" }}>导出备份</button>
-        <button onClick={() => fileRef.current?.click()} className={ghost} style={{ border: "1px solid #ffffff33" }}>导入备份</button>
+        <button onClick={doExport} className={ghost} style={{ border: "1px solid #ffffff33" }}>{t("导出备份")}</button>
+        <button onClick={() => fileRef.current?.click()} className={ghost} style={{ border: "1px solid #ffffff33" }}>{t("导入备份")}</button>
         <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={doImport} />
       </div>
       <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
-        笔记存在这个浏览器里，<b className="text-[#ffb36b] font-bold">「移除」插件会全部删掉</b>。重装、换电脑前先导出备份。
+        {t("笔记存在这个浏览器里，")}<b className="text-[#ffb36b] font-bold">{t("「移除」插件会全部删掉")}</b>{t("。重装、换电脑前先导出备份。")}
       </div>
       {msg && (
         <div className={`text-[12px] leading-relaxed rounded-md px-2.5 py-2 ${msg.ok ? "text-[#7ee3a0] bg-[#7ee3a014]" : "text-[#ff9a9a] bg-[#ff9a9a14]"}`}>
@@ -393,8 +399,8 @@ function DriveBackup({ btn, onRestored }) {
   /* 后台没回话（r 是 undefined）多半是插件更新后后台还是旧的、不认识这个消息：提示去扩展管理页点刷新。
      以前直接读 r.items 抛错，列表就一直停在「正在读取…」（踩过） */
   const fail = (r) => {
-    if (r === undefined || r === null) { setMsg({ ok: false, text: "插件后台没有响应：请到扩展管理页点一下这个插件的刷新按钮" }); return true; }
-    if (r.error || r.ok === false) { setMsg({ ok: false, text: r.error || "失败了" }); return true; }
+    if (r === undefined || r === null) { setMsg({ ok: false, text: t("插件后台没有响应：请到扩展管理页点一下这个插件的刷新按钮") }); return true; }
+    if (r.error || r.ok === false) { setMsg({ ok: false, text: r.error || t("失败了") }); return true; }
     return false;
   };
   const loadList = async () => {
@@ -411,7 +417,7 @@ function DriveBackup({ btn, onRestored }) {
     setBusy("");
     if (fail(r)) return;
     setItems(r.items || []);
-    if (r.items?.length) setMsg({ ok: true, text: `云端有 ${r.items.length} 份备份，可以在下面选一份恢复` });
+    if (r.items?.length) setMsg({ ok: true, text: t("云端有 {n} 份备份，可以在下面选一份恢复", { n: r.items.length }) });
     else send("gdrive:backup");                     // 云端还没有：先备份一份
   };
   const backup = async () => {
@@ -419,7 +425,7 @@ function DriveBackup({ btn, onRestored }) {
     const r = await send("gdrive:backup", { manual: true }).catch((e) => ({ error: e.message }));
     setBusy("");
     if (fail(r)) return;
-    setMsg({ ok: true, text: `已备份：${r.papers} 篇论文、${r.anns} 条标注` });
+    setMsg({ ok: true, text: t("已备份：{p} 篇论文、{a} 条标注", { p: r.papers, a: r.anns }) });
     loadList();
   };
   const restore = async (id, mode) => {
@@ -427,7 +433,9 @@ function DriveBackup({ btn, onRestored }) {
     const r = await send("gdrive:restore", { id, mode }).catch((e) => ({ error: e.message }));
     setBusy("");
     if (fail(r)) return;
-    setMsg({ ok: true, text: `${mode === "replace" ? "已替换成这份备份" : "已合并（同一条留较新的）"}：现在共 ${r.papers} 篇论文、${r.anns} 条标注` });
+    setMsg({ ok: true, text: mode === "replace"
+      ? t("已替换成这份备份：现在共 {p} 篇论文、{a} 条标注", { p: r.papers, a: r.anns })
+      : t("已合并（同一条留较新的）：现在共 {p} 篇论文、{a} 条标注", { p: r.papers, a: r.anns }) });
     onRestored?.();
   };
   const remove = async (id) => {
@@ -442,13 +450,13 @@ function DriveBackup({ btn, onRestored }) {
     return (
       <div className={box}>
         <div className="flex items-center gap-2">
-          <span className="flex-1 text-[#e6e6e6]">备份到 Google 云端硬盘</span>
+          <span className="flex-1 text-[#e6e6e6]">{t("备份到 Google 云端硬盘")}</span>
           <button onClick={connect} disabled={!!busy} className={ghost} style={{ border: "1px solid #ffffff33" }}>
-            {busy === "connect" ? "连接中…" : "连接 Google 账号"}
+            {busy === "connect" ? t("连接中…") : t("连接 Google 账号")}
           </button>
         </div>
         <div className="text-[11.5px] leading-relaxed text-[#9a9a9a]">
-          自动备份到你的云端硬盘，换电脑后连上同一账号就能恢复。插件只能访问它自己建的备份文件。
+          {t("自动备份到你的云端硬盘，换电脑后连上同一账号就能恢复。插件只能访问它自己建的备份文件。")}
         </div>
         {msg && <div className={`text-[12px] ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
       </div>
@@ -457,49 +465,49 @@ function DriveBackup({ btn, onRestored }) {
   return (
     <div className={box}>
       <div className="flex items-center gap-2">
-        <span className="flex-1 min-w-0 truncate text-[#e6e6e6]">备份到 Google 云端硬盘 · <span className="text-[#9a9a9a]">{g.email}</span></span>
+        <span className="flex-1 min-w-0 truncate text-[#e6e6e6]">{t("备份到 Google 云端硬盘")} · <span className="text-[#9a9a9a]">{g.email}</span></span>
         {/* 断开（云端的备份不会删，重新连接就回来）：同删除，点两下 */}
         <UnlinkButton onConfirm={() => { send("gdrive:disconnect"); setItems(null); }} />
       </div>
       {g.needAuth ? (
         <div className="flex items-center gap-2 text-[12px] text-[#ffb36b]">
-          <span className="flex-1">Google 授权过期了，自动备份暂停</span>
-          <button onClick={connect} disabled={!!busy} className={ghost} style={{ border: "1px solid #ffffff33" }}>重新连接</button>
+          <span className="flex-1">{t("Google 授权过期了，自动备份暂停")}</span>
+          <button onClick={connect} disabled={!!busy} className={ghost} style={{ border: "1px solid #ffffff33" }}>{t("重新连接")}</button>
         </div>
       ) : (
         <div className="text-[12px] text-[#9a9a9a]">
-          {g.lastBackup ? <>上次备份 {when(g.lastBackup)}{g.lastStats ? `（${g.lastStats.papers} 篇、${g.lastStats.anns} 条）` : ""}</> : "还没有备份过"}
-          {g.lastError && <span className="text-[#ff9a9a]"> · 上次失败：{g.lastError}</span>}
+          {g.lastBackup ? <>{t("上次备份")} {when(g.lastBackup)}{g.lastStats ? t("（{p} 篇、{a} 条）", { p: g.lastStats.papers, a: g.lastStats.anns }) : ""}</> : t("还没有备份过")}
+          {g.lastError && <span className="text-[#ff9a9a]"> · {t("上次失败：{err}", { err: g.lastError })}</span>}
         </div>
       )}
       <div className="flex items-center gap-2">
         <span className="flex-1 flex items-center gap-2">
           <Switch on={g.auto !== false} onClick={() => send("gdrive:auto", { on: g.auto === false })} />
-          <span className="text-[12px]">自动备份（一天一份）</span>
+          <span className="text-[12px]">{t("自动备份（一天一份）")}</span>
         </span>
         <button onClick={backup} disabled={!!busy || g.needAuth} className={ghost} style={{ border: "1px solid #ffffff33" }}>
-          {busy === "backup" ? "备份中…" : "立即备份"}</button>
+          {busy === "backup" ? t("备份中…") : t("立即备份")}</button>
       </div>
       {msg && <div className={`text-[12px] leading-relaxed ${msg.ok ? "text-[#7ee3a0]" : "text-[#ff9a9a]"}`}>{msg.text}</div>}
 
       {pick && <RestoreDialog item={pick} when={when} onCancel={() => setPick(null)} onRestore={(mode) => restore(pick.id, mode)} />}
       {connected && (
         <div className="border-t border-[#ffffff14] pt-2 mt-0.5">
-          <div className="text-[11.5px] text-[#9a9a9a] mb-1">云端的备份（只留最近 10 份）</div>
-          {items === null ? <div className="text-[12px] text-[#8a8a8a] py-1">正在读取…</div>
-            : !items.length ? <div className="text-[12px] text-[#8a8a8a] py-1">还没有备份</div>
+          <div className="text-[11.5px] text-[#9a9a9a] mb-1">{t("云端的备份（只留最近 10 份）")}</div>
+          {items === null ? <div className="text-[12px] text-[#8a8a8a] py-1">{t("正在读取…")}</div>
+            : !items.length ? <div className="text-[12px] text-[#8a8a8a] py-1">{t("还没有备份")}</div>
             : items.map(f => (
               <div key={f.id} className="py-1.5 border-b border-[#ffffff0d] last:border-b-0">
                 <div className="flex items-center gap-2">
                   <div className="flex-1 min-w-0 text-[12.5px] text-[#e6e6e6]">
                     {when(f.time)}
-                    {f.mine && <span className="ml-1.5 text-[10.5px] px-1.5 py-px rounded bg-[#7ec8e31f] text-[#7ec8e3]">这台电脑</span>}
-                    <span className="ml-2 text-[11.5px] text-[#8a8a8a]">{f.papers} 篇 · {f.anns} 条</span>
+                    {f.mine && <span className="ml-1.5 text-[10.5px] px-1.5 py-px rounded bg-[#7ec8e31f] text-[#7ec8e3]">{t("这台电脑")}</span>}
+                    <span className="ml-2 text-[11.5px] text-[#8a8a8a]">{t("{p} 篇 · {a} 条", { p: f.papers, a: f.anns })}</span>
                   </div>
                   <button onClick={() => setPick(f)} disabled={!!busy}
-                    className={`${small} text-[#c8c8c8] border-[#ffffff33] hover:bg-[#ffffff1a]`}>{busy === f.id ? "…" : "恢复"}</button>
+                    className={`${small} text-[#c8c8c8] border-[#ffffff33] hover:bg-[#ffffff1a]`}>{busy === f.id ? "…" : t("恢复")}</button>
                   {/* 垃圾桶，同别处的删除：点两下（DeleteButton） */}
-                  <DeleteButton onConfirm={() => remove(f.id)} title="删除这份备份" size={28} icon={15} round />
+                  <DeleteButton onConfirm={() => remove(f.id)} title={t("删除这份备份")} size={28} icon={15} round />
                 </div>
               </div>
             ))}
@@ -527,16 +535,16 @@ function RestoreDialog({ item, when, onCancel, onRestore }) {
     onRestore(mode);
   };
   const opts = [
-    ["merge", "合并", "把备份里的笔记补进来；同一条两边都有时留较新的。本机的笔记不会删。"],
-    ["replace", "替换", "本机变得和这份备份一模一样：本机有、备份里没有的笔记会被删除。"],
+    ["merge", t("合并"), t("把备份里的笔记补进来；同一条两边都有时留较新的。本机的笔记不会删。")],
+    ["replace", t("替换"), t("本机变得和这份备份一模一样：本机有、备份里没有的笔记会被删除。")],
   ];
   return createPortal(
     <div className="rh-restore-dlg fixed inset-0 z-[220] bg-black/50 flex items-center justify-center p-4 animate-fade-in font-sans"
       onMouseDown={e => { if (e.target === e.currentTarget) onCancel(); }}>
       <div className="w-full max-w-[400px] rounded-xl bg-[#323639] border border-[#ffffff26] shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-5">
-        <div className="text-[14.5px] text-[#fff] font-bold">从这份备份恢复</div>
+        <div className="text-[14.5px] text-[#fff] font-bold">{t("从这份备份恢复")}</div>
         <div className="text-[12px] text-[#9a9a9a] mt-1">
-          {when(item.time)}{item.mine ? "（这台电脑）" : ""} · {item.papers} 篇论文、{item.anns} 条标注
+          {when(item.time)}{item.mine ? t("（这台电脑）") : ""} · {t("{p} 篇论文、{a} 条标注", { p: item.papers, a: item.anns })}
         </div>
         <div className="flex flex-col gap-2 mt-4">
           {opts.map(([k, label, desc]) => (
@@ -546,7 +554,7 @@ function RestoreDialog({ item, when, onCancel, onRestore }) {
               <div className="flex items-center gap-2">
                 <span className={`w-3.5 h-3.5 rounded-full border-2 shrink-0 ${mode === k ? "border-[#7ec8e3] bg-[#7ec8e3] shadow-[inset_0_0_0_2px_#323639]" : "border-[#ffffff59]"}`} />
                 <span className="text-[13px] text-[#f2f2f2] font-bold">{label}</span>
-                {k === "merge" && <span className="text-[11px] text-[#9a9a9a]">推荐</span>}
+                {k === "merge" && <span className="text-[11px] text-[#9a9a9a]">{t("推荐")}</span>}
               </div>
               <div className={`text-[12px] leading-relaxed mt-1 pl-[22px] ${k === "replace" ? "text-[#ffb36b]" : "text-[#9a9a9a]"}`}>{desc}</div>
             </button>
@@ -554,11 +562,11 @@ function RestoreDialog({ item, when, onCancel, onRestore }) {
         </div>
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onCancel}
-            className="h-8 px-4 rounded-full text-[12.5px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">取消</button>
+            className="h-8 px-4 rounded-full text-[12.5px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">{t("取消")}</button>
           <button onClick={go}
             className={`h-8 px-4 rounded-full text-[12.5px] font-bold border-none cursor-pointer
               ${armed ? "text-[#fff] bg-[#d93025] hover:bg-[#b3261e]" : "text-[#10232c] bg-[#7ec8e3] hover:bg-[#9ad5ea]"}`}>
-            {mode === "replace" ? (armed ? "再点一下替换" : "替换") : "合并"}
+            {mode === "replace" ? (armed ? t("再点一下替换") : t("替换")) : t("合并")}
           </button>
         </div>
       </div>
@@ -578,7 +586,7 @@ function UnlinkButton({ onConfirm }) {
     setArmed(true);
     disarmIn(3000);
   };
-  const label = armed ? "再点一下断开" : "断开 Google 账号";
+  const label = armed ? t("再点一下断开") : t("断开 Google 账号");
   return (
     <button onClick={click} onMouseLeave={() => { if (armed) disarmIn(800); }} onMouseEnter={() => { if (armed) disarmIn(3000); }}
       title={label} aria-label={label}

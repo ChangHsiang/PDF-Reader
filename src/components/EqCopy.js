@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { pageCanvasBox } from "../lib/pdfAnchor";
 import { clientRectToNorm, pageSizePx } from "../lib/pdfium/rotate";
 import { equationsFor, normLabel, sourceSize } from "../lib/latexSource";
+import { t } from "../lib/i18n";
 
 /**
  * 在正文里每个**带编号的独立公式**左边放一颗「复制 LaTeX」按钮。
@@ -64,18 +65,18 @@ export function useEquationCopy(viewerElRef, apiRef, ready, arxivId, enabled) {
       e.stopPropagation();
       e.preventDefault();
       const label = btn.dataset.label;
-      showBubble(btn, srcSize > 5e6 ? `正在下载 LaTeX 源码（${(srcSize / 1e6).toFixed(1)} MB）…` : "正在读取 LaTeX 源码…", true);
+      showBubble(btn, srcSize > 5e6 ? t("正在下载 LaTeX 源码（{mb} MB）…", { mb: (srcSize / 1e6).toFixed(1) }) : t("正在读取 LaTeX 源码…"), true);
       let map;
       try { map = await source(); } catch (err) {
-        showBubble(btn, `读取源码失败：${esc(err.message || "网络错误")}`, false);
+        showBubble(btn, t("读取源码失败：{err}", { err: esc(err.message || t("网络错误")) }), false);
         return;
       }
-      if (!map) { showBubble(btn, "这篇论文在 arXiv 上只有 PDF，没有 LaTeX 源码", false); return; }
+      if (!map) { showBubble(btn, t("这篇论文在 arXiv 上只有 PDF，没有 LaTeX 源码"), false); return; }
       const hit = map.get(label);
-      if (!hit) { showBubble(btn, `源码里没对上公式 (${esc(label)})`, false); return; }
-      try { await navigator.clipboard.writeText(hit.latex); } catch { showBubble(btn, "复制失败（剪贴板没有权限）", false); return; }
+      if (!hit) { showBubble(btn, t("源码里没对上公式 ({n})", { n: esc(label) }), false); return; }
+      try { await navigator.clipboard.writeText(hit.latex); } catch { showBubble(btn, t("复制失败（剪贴板没有权限）"), false); return; }
       const preview = hit.latex.length > 160 ? `${hit.latex.slice(0, 160)}…` : hit.latex;
-      showBubble(btn, `✓ 已复制 (${esc(label)}) 的 LaTeX<div style="margin-top:4px;color:#d8d8d8;font:11.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all">${esc(preview)}</div>`, true);
+      showBubble(btn, `${t("✓ 已复制 ({n}) 的 LaTeX", { n: esc(label) })}<div style="margin-top:4px;color:#d8d8d8;font:11.5px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-all">${esc(preview)}</div>`, true);
     };
 
     const scanPage = (pageEl) => {
@@ -152,7 +153,7 @@ export function useEquationCopy(viewerElRef, apiRef, ready, arxivId, enabled) {
         const b = document.createElement("button");
         b.className = "rh-eq-btn rh-selbar";
         b.dataset.label = f.label;
-        b.title = `复制公式 (${f.label}) 的 LaTeX`;
+        b.title = t("复制公式 ({n}) 的 LaTeX", { n: f.label });
         b.innerHTML = COPY_ICON;
         // 放在编号右边（栏间空白 / 页边距里），不挤在公式和编号之间
         b.style.left = `calc(${f.x * 100}% + 3px)`;

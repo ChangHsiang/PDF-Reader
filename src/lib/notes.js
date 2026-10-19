@@ -1,5 +1,6 @@
 import { splitPaperKey } from "./pdfAnchor";
 import { rest, restRows } from "./session";
+import { t } from "./i18n";
 
 /**
  * 笔记 / 标注：**本地优先 + 登录后同步**。
@@ -269,8 +270,8 @@ let remoteHasStyle = null;
 /* 网站数据库还不认的标注类型：ink（迁移 0041 放开）、text（0042 放开）、note（0043 放开）。没跑对应迁移时插入会撞
    kind 的 CHECK（23514）—— 记住这个类型，本次会话它先只留在本机，别的标注照常同步；同步状态里说清楚是为什么 */
 const blockedKinds = new Set();
-const NEW_KINDS = { ink: ["手写笔迹", "0041"], text: ["文本框", "0042"], note: ["附注", "0043"] };
-const kindNotReady = (k) => `${NEW_KINDS[k][0]}暂存本机（网站数据库还没跑迁移 ${NEW_KINDS[k][1]}）`;
+const NEW_KINDS = { ink: [t("手写笔迹"), "0041"], text: [t("文本框"), "0042"], note: [t("附注"), "0043"] };
+const kindNotReady = (k) => t("{kind}暂存本机（网站数据库还没跑迁移 {m}）", { kind: NEW_KINDS[k][0], m: NEW_KINDS[k][1] });
 const isCheckViolation = (res) => res.clone().json().then(e => e?.code === "23514").catch(() => false);
 /* 云端有没有 share_excluded 列（网站迁移 0044：整份分享时去掉某几条）。和 style 一样：没跑时退回不带它，
    「不分享这条」先只记在本地 */
@@ -305,17 +306,17 @@ async function readJson(res) {
  * 返回 `{ ok, error? }`。失败不抛：阅读不能被同步连累，UI 上显示一个「未同步」就够了。
  */
 export async function syncPaper(base, uid) {
-  if (!uid) return { ok: false, error: "未登录" };
+  if (!uid) return { ok: false, error: t("未登录") };
 
   /* ① 拉 */
   const notes = await readJson(await rest(`paper_notes?user_id=eq.${uid}&${likeBase(base)}&select=${NOTE_COLS}`, { auth: true }));
-  if (!notes) return { ok: false, error: "连不上服务器" };
+  if (!notes) return { ok: false, error: t("连不上服务器") };
   const myNotes = notes.filter(sameBase(base));
   let remoteAnns = [];
   if (myNotes.length) {
     const ids = myNotes.map(n => `"${n.id}"`).join(",");
     remoteAnns = await readAnnRows(`note_id=in.(${ids})`, true);
-    if (!remoteAnns) return { ok: false, error: "读取云端标注失败" };
+    if (!remoteAnns) return { ok: false, error: t("读取云端标注失败") };
   }
   const keyOfNote = Object.fromEntries(myNotes.map(n => [n.id, n.paper_key]));
   const remoteNoteByKey = Object.fromEntries(myNotes.map(n => [n.paper_key, n]));
@@ -386,7 +387,7 @@ export async function syncPaper(base, uid) {
     const ids = toDelete.slice(i, i + CHUNK).map(a => a.id);
     const res = await rest(`paper_annotations?id=in.(${ids.join(",")})`, { method: "DELETE", auth: true });
     if (res?.ok) ids.forEach(id => deletedIds.add(id));
-    else error = "有删除没能同步";
+    else error = t("有删除没能同步");
   }
 
   const rowOf = (a, noteId) => {
@@ -418,7 +419,7 @@ export async function syncPaper(base, uid) {
   const noteIds = {};
   for (const k of new Set(toPush.map(a => a.paper_key))) noteIds[k] = await ensureRemoteNote(k);
   const ready = toPush.filter(a => noteIds[a.paper_key]);
-  if (ready.length < toPush.length) error = "建立云端笔记失败";
+  if (ready.length < toPush.length) error = t("建立云端笔记失败");
   const noteOf = (a) => noteIds[a.paper_key];
 
   for (let i = 0; i < ready.length; i += CHUNK) {
@@ -436,7 +437,7 @@ export async function syncPaper(base, uid) {
         continue;
       }
       if ((await readJson(r1))?.length) syncedAt.set(a.id, a.updated_at);
-      else error = "有标注没能上传";
+      else error = t("有标注没能上传");
     }
   }
 
@@ -461,7 +462,7 @@ export async function syncPaper(base, uid) {
         const n = x.notes[paperKey];
         if (n) { n.dirty = false; n.remote_id = id; n.remote_uid = uid; }
       });
-    } else error = "公开 / 私有设置没能同步";
+    } else error = t("公开 / 私有设置没能同步");
   }
   if (Object.keys(remoteNoteByKey).length) {
     await mutate(base, (x) => {
@@ -475,11 +476,11 @@ export async function syncPaper(base, uid) {
 
 /** 本地所有有改动的论文都推一遍，再把云端「我的笔记」里本地没有的论文拉下来 */
 export async function syncAll(uid) {
-  if (!uid) return { ok: false, error: "未登录" };
+  if (!uid) return { ok: false, error: t("未登录") };
   const bases = new Set((await listLibrary()).map(p => p.base));
   const remote = await readJson(await rest(
     `paper_notes?user_id=eq.${uid}&select=paper_key&order=updated_at.desc&limit=200`, { auth: true }));
-  if (!remote) return { ok: false, error: "连不上服务器" };
+  if (!remote) return { ok: false, error: t("连不上服务器") };
   remote.forEach(n => bases.add(baseOf(n.paper_key)));
   let error = null;
   for (const b of bases) {

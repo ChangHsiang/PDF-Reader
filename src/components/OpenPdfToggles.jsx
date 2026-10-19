@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSettings, setSettings } from "../lib/settings";
+import { t } from "../lib/i18n";
 
 /**
  * 「在线 PDF / 本地 PDF 用笔记阅读器」两个开关（设置 → 阅读，和插件图标弹出的菜单共用）。
@@ -31,11 +32,11 @@ export default function OpenPdfToggles({ Switch, compact = false }) {
   const openExt = () => chrome.tabs.create({ url: `chrome://extensions/?id=${chrome.runtime.id}` });
   const link = "p-0 bg-transparent border-none cursor-pointer text-[#7ec8e3] underline text-[11.5px] font-sans";
 
-  const onlineHint = !s.interceptOnline ? null : allSites ? "arXiv 和其他网站的 PDF" : (
-    <>只接管 arXiv · <button onClick={grant} className={link}>授权其他网站</button></>
+  const onlineHint = !s.interceptOnline ? null : allSites ? t("arXiv 和其他网站的 PDF") : (
+    <>{t("只接管 arXiv")} · <button onClick={grant} className={link}>{t("授权其他网站")}</button></>
   );
   const localHint = !s.interceptLocal || fileAccess ? null : (
-    <>要在<button onClick={openExt} className={`${link} mx-0.5`}>扩展详情</button>里打开「允许访问文件网址」</>
+    <>{t("要在")}<button onClick={openExt} className={`${link} mx-0.5`}>{t("扩展详情")}</button>{t("里打开「允许访问文件网址」")}</>
   );
   const row = (title, hint, on, onClick) => (
     <div className={`flex items-center gap-3 ${compact ? "py-1" : "py-2.5"}`}>
@@ -48,9 +49,9 @@ export default function OpenPdfToggles({ Switch, compact = false }) {
   );
   return (
     <>
-      <div className={`text-[11.5px] text-[#9a9a9a] ${compact ? "" : "pt-2"}`}>用本阅读器打开</div>
-      {row("在线 PDF", onlineHint, s.interceptOnline, toggleOnline)}
-      {row("本地 PDF", localHint, s.interceptLocal, () => setSettings({ interceptLocal: !s.interceptLocal }))}
+      <div className={`text-[11.5px] text-[#9a9a9a] ${compact ? "" : "pt-2"}`}>{t("用本阅读器打开")}</div>
+      {row(t("在线 PDF"), onlineHint, s.interceptOnline, toggleOnline)}
+      {row(t("本地 PDF"), localHint, s.interceptLocal, () => setSettings({ interceptLocal: !s.interceptLocal }))}
     </>
   );
 }

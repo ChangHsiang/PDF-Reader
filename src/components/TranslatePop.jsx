@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { translate, cleanForTranslate } from "../lib/translate";
 import { useKeepInView } from "../lib/useKeepInView";
+import { t } from "../lib/i18n";
 
 /**
  * 划词翻译弹窗：选中文字 → 工具条上点「翻译」（或设置里开了直接翻译）→ 在选区旁弹出译文。
@@ -22,7 +23,7 @@ export default function TranslatePop({ text, pos, onClose, onSaveNote, pinned, o
     if (!text) { setRes(null); return; }
     let alive = true;
     setRes(null);
-    translate(text).then(r => { if (alive) setRes(r); }, e => { if (alive) setRes({ error: e.message || "翻译失败" }); });
+    translate(text).then(r => { if (alive) setRes(r); }, e => { if (alive) setRes({ error: e.message || t("翻译失败") }); });
     return () => { alive = false; };
   }, [text]);
 
@@ -83,26 +84,26 @@ export default function TranslatePop({ text, pos, onClose, onSaveNote, pinned, o
             </div>
           )}
           {!text ? (
-            <div className="text-[13px] text-[#9a9a9a] py-1">选中正文里的文字，译文会显示在这里</div>
+            <div className="text-[13px] text-[#9a9a9a] py-1">{t("选中正文里的文字，译文会显示在这里")}</div>
           ) : !res ? (
-            <div className="text-[13px] text-[#b8b8b8] py-1">翻译中…</div>
+            <div className="text-[13px] text-[#b8b8b8] py-1">{t("翻译中…")}</div>
           ) : res.error ? (
             <div className="text-[13px] text-[#ff9a9a] py-1">{res.error}</div>
           ) : (
             <div className="text-[14px] leading-relaxed text-[#f2f2f2] whitespace-pre-line">{res.text}</div>
           )}
         </div>
-        <div onPointerDown={startDrag} title={pinned ? "拖动这里可以挪位置" : undefined}
+        <div onPointerDown={startDrag} title={pinned ? t("拖动这里可以挪位置") : undefined}
           className={`flex items-center gap-0.5 px-1.5 pb-1.5 select-none ${pinned ? "cursor-move" : ""}`}>
           <span className="flex-1 pl-1.5 text-[10.5px] text-[#7a7a7a]">{res?.engine || ""}</span>
-          {text && <button onClick={() => setShowSrc(v => !v)} className={btn}>{showSrc ? "隐藏原文" : "原文"}</button>}
+          {text && <button onClick={() => setShowSrc(v => !v)} className={btn}>{showSrc ? t("隐藏原文") : t("原文")}</button>}
           {res?.text && (
             <>
-              <button onClick={copy} className={btn}>{copied ? "✓ 已复制" : "复制"}</button>
-              <button onClick={() => onSaveNote(res.text)} className={btn} title="高亮这段，并把译文存成批注">存为批注</button>
+              <button onClick={copy} className={btn}>{copied ? t("✓ 已复制") : t("复制")}</button>
+              <button onClick={() => onSaveNote(res.text)} className={btn} title={t("高亮这段，并把译文存成批注")}>{t("存为批注")}</button>
             </>
           )}
-          <button onClick={togglePin} title={pinned ? "取消固定" : "固定：常驻显示，之后选中的文字都翻译到这里"}
+          <button onClick={togglePin} title={pinned ? t("取消固定") : t("固定：常驻显示，之后选中的文字都翻译到这里")}
             className={`${btn} px-1.5 ${pinned ? "text-[#7ec8e3] bg-[#7ec8e31f]" : "text-[#9a9a9a]"}`}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill={pinned ? "currentColor" : "none"} stroke="currentColor"
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
@@ -110,7 +111,7 @@ export default function TranslatePop({ text, pos, onClose, onSaveNote, pinned, o
               <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
             </svg>
           </button>
-          <button onClick={onClose} className={`${btn} text-[#9a9a9a]`} title={pinned ? "关闭（并取消固定）" : "关闭（Esc）"}>✕</button>
+          <button onClick={onClose} className={`${btn} text-[#9a9a9a]`} title={pinned ? t("关闭（并取消固定）") : t("关闭（Esc）")}>✕</button>
         </div>
       </div>
     </div>

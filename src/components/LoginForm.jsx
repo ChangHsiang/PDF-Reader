@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { signIn, signInWithGoogle } from "../lib/session";
 import { SITE_URL } from "../lib/config";
+import { t } from "../lib/i18n";
 
 /** ResearchHub 账号登录：用 Google 账号（第一次用会顺便建好 ResearchHub 账号），或邮箱 + 密码。
     邮箱注册要过人机验证，留在网站上做 */
@@ -23,7 +24,7 @@ export default function LoginForm({ onDone, onCancel }) {
     e.preventDefault();
     if (!email.trim() || !password || busy) return;
     setBusy(true); setErr("");
-    const r = await signIn(email.trim(), password).catch(() => ({ error: "扩展后台没有响应，请重试" }));
+    const r = await signIn(email.trim(), password).catch(() => ({ error: t("扩展后台没有响应，请重试") }));
     setBusy(false);
     if (r?.error) { setErr(r.error); return; }
     onDone?.(r.session);
@@ -32,9 +33,9 @@ export default function LoginForm({ onDone, onCancel }) {
   const google = async () => {
     if (busy) return;
     setBusy(true); setErr("");
-    const r = await signInWithGoogle().catch(() => ({ error: "扩展后台没有响应，请重试" }));
+    const r = await signInWithGoogle().catch(() => ({ error: t("扩展后台没有响应，请重试") }));
     setBusy(false);
-    if (r?.error) { if (r.error !== "已取消") setErr(r.error); return; }
+    if (r?.error) { if (!r.cancelled) setErr(r.error); return; }
     onDone?.(r.session);
   };
 
@@ -42,36 +43,36 @@ export default function LoginForm({ onDone, onCancel }) {
                 "outline-none placeholder:text-[#ffffff59] focus:border-[#ffffff80]";
   return (
     <form onSubmit={submit} className="flex flex-col gap-2 font-sans">
-      <div className="text-[14px] text-[#fff] font-bold">登录 ResearchHub</div>
+      <div className="text-[14px] text-[#fff] font-bold">{t("登录 ResearchHub")}</div>
       <div className="text-[11.5px] text-[#b8b8b8] leading-relaxed mb-1">
-        登录后笔记会和网站同步，还能看别人公开的笔记、参与论文评论。没登录时写的笔记会在登录后一并上传到你的账号。
+        {t("登录后笔记会和网站同步，还能看别人公开的笔记、参与论文评论。没登录时写的笔记会在登录后一并上传到你的账号。")}
       </div>
       <button type="button" onClick={google} disabled={busy}
         className="h-9 rounded-lg flex items-center justify-center gap-2 text-[13px] font-sans text-[#1f1f1f] bg-[#fff] border-none
                    cursor-pointer hover:bg-[#f1f3f4] disabled:opacity-60">
-        <GoogleG />用 Google 账号登录
+        <GoogleG />{t("用 Google 账号登录")}
       </button>
       <div className="flex items-center gap-2 text-[11px] text-[#8a8a8a] my-0.5">
-        <span className="flex-1 border-t border-[#ffffff26]" />或用邮箱和密码<span className="flex-1 border-t border-[#ffffff26]" />
+        <span className="flex-1 border-t border-[#ffffff26]" />{t("或用邮箱和密码")}<span className="flex-1 border-t border-[#ffffff26]" />
       </div>
-      <input className={field} type="email" autoComplete="email" placeholder="邮箱" value={email}
+      <input className={field} type="email" autoComplete="email" placeholder={t("邮箱")} value={email}
         onChange={e => setEmail(e.target.value)} />
-      <input className={field} type="password" autoComplete="current-password" placeholder="密码" value={password}
+      <input className={field} type="password" autoComplete="current-password" placeholder={t("密码")} value={password}
         onChange={e => setPassword(e.target.value)} />
       {err && <div className="text-[12px] text-[#ff9a9a]">{err}</div>}
       <div className="flex items-center gap-2 mt-1">
         <a href={`${SITE_URL}`} target="_blank" rel="noopener noreferrer"
-          className="flex-1 text-[11.5px] text-[#7ec8e3] no-underline hover:underline">没有账号？去网站注册 ↗</a>
+          className="flex-1 text-[11.5px] text-[#7ec8e3] no-underline hover:underline">{t("没有账号？去网站注册 ↗")}</a>
         {onCancel && (
           <button type="button" onClick={onCancel}
             className="h-8 px-3 rounded-full text-[12.5px] text-[#c8c8c8] bg-transparent border border-[#ffffff33] cursor-pointer hover:bg-[#ffffff1a]">
-            取消
+            {t("取消")}
           </button>
         )}
         <button type="submit" disabled={busy}
           className="h-8 px-4 rounded-full text-[12.5px] font-bold text-[#10232c] bg-[#7ec8e3] border-none cursor-pointer
                      hover:bg-[#9ad5ea] disabled:opacity-50">
-          {busy ? "登录中…" : "登录"}
+          {busy ? t("登录中…") : t("登录")}
         </button>
       </div>
     </form>

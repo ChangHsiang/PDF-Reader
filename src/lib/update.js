@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t } from "./i18n";
 
 /**
  * 新版本检测。插件是「加载已解压的扩展程序」装的：浏览器不会自动更新它，插件也不能改写自己的文件 ——
@@ -29,7 +30,7 @@ export async function checkUpdate({ force = false } = {}) {
   const { update } = await chrome.storage.local.get("update");
   if (!force && update?.latest && Date.now() - update.checkedAt < DAY) return update.latest;
   const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
-  if (!r.ok) throw new Error(r.status === 403 ? "GitHub 查询太频繁，稍后再试" : `GitHub 返回 ${r.status}`);
+  if (!r.ok) throw new Error(r.status === 403 ? t("GitHub 查询太频繁，稍后再试") : t("GitHub 返回 {s}", { s: r.status }));
   const d = await r.json();
   const latest = {
     version: String(d.tag_name || "").replace(/^v/i, ""),
@@ -55,7 +56,7 @@ export function useUpdate(auto = true) {
       const { update_ignored } = await chrome.storage.local.get("update_ignored");
       setSt({ latest, ignored: update_ignored || null, checking: false, error: null });
     } catch (e) {
-      setSt(s => ({ ...s, checking: false, error: e.message || "检查失败" }));
+      setSt(s => ({ ...s, checking: false, error: e.message || t("检查失败") }));
     }
   };
   useEffect(() => {
